@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Near My Route
 
-## Getting Started
+Route-aware MBSS facility opportunity prototype for finding same-day add-on candidates near tomorrow's route.
 
-First, run the development server:
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open the printed local URL, usually `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## What is included
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Next.js, TypeScript, React, Tailwind CSS
+- React Leaflet map with OpenStreetMap tiles
+- Houston-area mock facilities and tomorrow route stops
+- Facility CRM list with search and filters
+- Schedule paste/import review with facility matching
+- Route opportunity ranking by estimated detour time
+- Facility detail drawer with contacts, notes, visit history, outreach history, and PHI-safe add-on template
+- Outreach logging, mark-contacted behavior, do-not-contact state, and tentative add-to-route
+- LocalStorage persistence under `near-my-route-state-v1`
 
-## Learn More
+## Route calculation
 
-To learn more about Next.js, take a look at the following resources:
+The MVP uses `src/lib/routeCalculations.ts`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Haversine distance between coordinates
+- Candidate insertion before Stop #1, between each stop pair, and after the final stop
+- Added distance converted to drive minutes using a configurable average speed, an urban road factor, and a small minimum operational detour floor
+- Opportunity ranking based on detour time, same-day friendliness, known contacts, recent outreach, volume, and do-not-contact status
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This file is the intended replacement seam for a future routing API. A later version can call Google Routes, Mapbox Directions, OSRM, or another service from `calculateRouteOpportunities` while keeping the UI and data model mostly unchanged. The external API should return route-aware added drive time, not just straight-line distance.
 
-## Deploy on Vercel
+## Privacy note
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The prototype uses facility-level data only. Outreach templates intentionally avoid patient names and clinical details.
