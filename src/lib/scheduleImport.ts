@@ -107,6 +107,7 @@ export function applyImportRows(
         appointmentTime: row.appointmentTime,
         studyCount: row.studyCount,
         status: "planned",
+        source: "scheduled",
       });
     });
 

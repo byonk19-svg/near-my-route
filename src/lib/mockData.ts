@@ -359,6 +359,7 @@ export const initialRouteStops: RouteStop[] = [
     appointmentTime: "8:30 AM",
     studyCount: 2,
     status: "confirmed",
+    source: "scheduled",
   },
   {
     id: "stop-2",
@@ -367,6 +368,7 @@ export const initialRouteStops: RouteStop[] = [
     appointmentTime: "10:15 AM",
     studyCount: 1,
     status: "confirmed",
+    source: "scheduled",
   },
   {
     id: "stop-3",
@@ -375,6 +377,7 @@ export const initialRouteStops: RouteStop[] = [
     appointmentTime: "1:00 PM",
     studyCount: 2,
     status: "planned",
+    source: "scheduled",
   },
 ];
 
