@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { initialFacilities, initialOutreachLogs, initialRouteStops } from "@/lib/mockData";
 import { calculateRouteOpportunities } from "@/lib/routeCalculations";
-import { applyImportRows, parseScheduleText } from "@/lib/scheduleImport";
+import { applyImportRows, importRowBlockingReason, parseScheduleText } from "@/lib/scheduleImport";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
 import type { Facility, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, RouteStop } from "@/lib/types";
 import { formatDaysAgo, friendlyValue, primaryContact, safeMessage, todayIsoDate } from "@/lib/format";
@@ -47,9 +47,9 @@ const RouteMap = dynamic(() => import("./RouteMap"), {
   loading: () => <div className="grid h-full place-items-center text-sm text-slate-500">Loading map...</div>,
 });
 
-const sampleSchedule = `8:30 AM, Memorial SNF, 12620 Memorial Dr, 2 studies
-10:15 AM, Park Manor Westchase, 11910 Richmond Ave, 1 study
-1:00 PM, Lakeside Rehab, 9440 Bellaire Blvd, 2 studies`;
+const sampleSchedule = `8:30 AM, Memorial SNF, 12620 Memorial Dr, Houston, TX, 2 studies
+10:15 AM Park Manor Westchase, 11910 Richmond Ave, Houston, TX, 1 study
+1:00 PM, Lakeside Rehab, 9440 Bellaire Blvd, Houston, TX, 2 studies`;
 
 const opportunityGroups: Opportunity["group"][] = [
   "Best Add-ons",
@@ -759,12 +759,72 @@ function OutreachQueueCard({
   );
 }
 
+function FacilityMatchSelect({
+  row,
+  facilities,
+  idPrefix,
+  onUpdateRow,
+}: {
+  row: ImportReviewRow;
+  facilities: Facility[];
+  idPrefix: string;
+  onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchId = `${idPrefix}-${row.id}-facility-search`;
+  const visibleFacilities = facilities.filter((facility) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return `${facility.name} ${facility.address} ${facility.city ?? ""}`.toLowerCase().includes(query);
+  });
+
+  return (
+    <div className="mt-3">
+      <label className="block text-xs font-bold uppercase text-slate-500" htmlFor={searchId}>
+        Search existing facilities
+      </label>
+      <div className="mt-1 flex items-center gap-2 rounded-md border border-slate-200 px-3">
+        <Search size={14} className="shrink-0 text-slate-400" />
+        <input
+          id={searchId}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Search by name, address, or city"
+          className="h-10 min-w-0 flex-1 text-sm font-medium text-slate-900 outline-none"
+        />
+      </div>
+      <label className="mt-2 block text-xs font-bold uppercase text-slate-500">
+        Existing facility
+        <select
+          value={row.matchedFacilityId ?? ""}
+          onChange={(event) =>
+            onUpdateRow(row.id, {
+              matchedFacilityId: event.target.value || undefined,
+              action: event.target.value ? "use_existing" : "needs_review",
+            })
+          }
+          className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
+        >
+          <option value="">Choose existing facility</option>
+          {visibleFacilities.map((facility) => (
+            <option key={facility.id} value={facility.id}>
+              {facility.name} - {facility.address}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 function ImportReviewCards({
   rows,
+  facilities,
   facilityById,
   onUpdateRow,
 }: {
   rows: ImportReviewRow[];
+  facilities: Facility[];
   facilityById: Map<string, Facility>;
   onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
 }) {
@@ -781,8 +841,7 @@ function ImportReviewCards({
       {rows.map((row, index) => {
         const matchName = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : undefined;
         const confidenceTone = row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate";
-        const createsPlaceholder = row.action === "create_new" && !row.address.trim();
-        const useExistingWithoutMatch = row.action === "use_existing" && !row.matchedFacilityId;
+        const issue = importRowBlockingReason(row);
 
         return (
           <article
@@ -790,7 +849,7 @@ function ImportReviewCards({
             className={cx(
               "rounded-lg border bg-white p-3 shadow-sm",
               row.action === "skip" ? "border-slate-200 opacity-70" : "border-slate-200",
-              useExistingWithoutMatch && "border-orange-300",
+              issue && row.action !== "skip" && "border-orange-300",
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -814,11 +873,15 @@ function ImportReviewCards({
                 onChange={(event) => onUpdateRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
                 className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
               >
-                <option value="use_existing">Use existing facility</option>
+                <option value="needs_review">Needs review</option>
+                <option value="use_existing">Use selected existing facility</option>
                 <option value="create_new">Create new facility</option>
                 <option value="skip">Skip row</option>
               </select>
             </label>
+            {row.action === "needs_review" || row.action === "use_existing" ? (
+              <FacilityMatchSelect row={row} facilities={facilities} idPrefix="mobile" onUpdateRow={onUpdateRow} />
+            ) : null}
             <label className="mt-3 block text-xs font-bold uppercase text-slate-500">
               Edit address
               <input
@@ -827,17 +890,7 @@ function ImportReviewCards({
                 className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-900"
               />
             </label>
-            {!row.appointmentTime ? <p className="mt-2 text-xs font-semibold text-orange-700">Appointment time is missing.</p> : null}
-            {useExistingWithoutMatch ? (
-              <p className="mt-2 text-xs font-semibold text-orange-700">
-                No existing match is selected. Confirming will create a new facility.
-              </p>
-            ) : null}
-            {createsPlaceholder ? (
-              <p className="mt-2 text-xs font-semibold text-orange-700">
-                Blank address will be created as Address needs review.
-              </p>
-            ) : null}
+            {issue ? <p className="mt-2 text-xs font-semibold text-orange-700">{issue}</p> : null}
             <details className="mt-3 text-xs text-slate-500">
               <summary className="cursor-pointer font-bold text-slate-600">Show original text</summary>
               <p className="mt-1 rounded-md bg-slate-50 p-2 font-mono">{row.raw}</p>
@@ -1054,12 +1107,19 @@ export default function NearMyRouteApp() {
       .map((stop) => todayStatusByFacilityId.get(stop.facilityId))
       .filter((status): status is TodayStatus => Boolean(status)),
   );
+  const importBlockingRows = reviewRows.filter((row) => importRowBlockingReason(row));
   const importSummary = {
     useExisting: reviewRows.filter((row) => row.action === "use_existing").length,
     createNew: reviewRows.filter((row) => row.action === "create_new").length,
     skipped: reviewRows.filter((row) => row.action === "skip").length,
-    confirmed: reviewRows.filter((row) => row.action !== "skip").length,
+    unresolved: importBlockingRows.length,
+    confirmed: reviewRows.filter((row) => row.action !== "skip" && !importRowBlockingReason(row)).length,
   };
+  const canConfirmImport = reviewRows.length > 0 && importSummary.confirmed > 0 && importSummary.unresolved === 0;
+  const confirmImportLabel =
+    importSummary.unresolved > 0
+      ? `Resolve ${importSummary.unresolved} ${importSummary.unresolved === 1 ? "Row" : "Rows"} Before Confirming`
+      : `Confirm ${importSummary.confirmed} ${importSummary.confirmed === 1 ? "Stop" : "Stops"}`;
   const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
   const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
   const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
@@ -1181,7 +1241,7 @@ export default function NearMyRouteApp() {
   }
 
   function confirmImportedRoute() {
-    if (reviewRows.length === 0) return;
+    if (!canConfirmImport) return;
     const result = applyImportRows(reviewRows, facilities);
     setFacilities(result.facilities);
     setRouteStops(result.routeStops);
@@ -1943,14 +2003,14 @@ export default function NearMyRouteApp() {
               <div className="hidden lg:block">
                 <Button
                   tone="primary"
-                  disabled={reviewRows.length === 0}
+                  disabled={!canConfirmImport}
                   onClick={confirmImportedRoute}
                 >
-                  Confirm Route
+                  {confirmImportLabel}
                 </Button>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.useExisting}</p>
                 <p className="text-[11px] font-bold uppercase text-slate-500">Existing</p>
@@ -1963,19 +2023,28 @@ export default function NearMyRouteApp() {
                 <p className="text-lg font-black text-slate-950">{importSummary.skipped}</p>
                 <p className="text-[11px] font-bold uppercase text-slate-500">Skipped</p>
               </div>
+              <div className="rounded-md border border-orange-200 bg-orange-50 p-2">
+                <p className="text-lg font-black text-orange-800">{importSummary.unresolved}</p>
+                <p className="text-[11px] font-bold uppercase text-orange-700">Unresolved</p>
+              </div>
             </div>
+            {importSummary.unresolved > 0 ? (
+              <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
+                Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, or skip the row.
+              </div>
+            ) : null}
             <div className="mt-4 lg:hidden">
               <Button
                 tone="primary"
                 className="w-full"
-                disabled={reviewRows.length === 0}
+                disabled={!canConfirmImport}
                 onClick={confirmImportedRoute}
               >
-                Confirm {importSummary.confirmed} Stops
+                {confirmImportLabel}
               </Button>
             </div>
             <div className="mt-4 lg:hidden">
-              <ImportReviewCards rows={reviewRows} facilityById={facilityById} onUpdateRow={updateReviewRow} />
+              <ImportReviewCards rows={reviewRows} facilities={facilities} facilityById={facilityById} onUpdateRow={updateReviewRow} />
             </div>
             <div className="mt-4 hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[760px] text-left text-sm">
@@ -1996,42 +2065,56 @@ export default function NearMyRouteApp() {
                       </td>
                     </tr>
                   ) : (
-                    reviewRows.map((row) => (
-                      <tr key={row.id}>
-                        <td className="px-3 py-3">
-                          <p className="font-bold text-slate-950">{row.facilityName}</p>
-                          <p className="text-xs text-slate-500">
-                            {row.appointmentTime} - {row.studyCount ?? 0} studies
-                          </p>
-                        </td>
-                        <td className="px-3 py-3">
-                          {row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : "No likely match"}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge tone={row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate"}>
-                            {row.confidence}%
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <select
-                            value={row.action}
-                            onChange={(event) => updateReviewRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
-                            className="h-9 rounded-md border border-slate-200 px-2 text-sm"
-                          >
-                            <option value="use_existing">Use existing facility</option>
-                            <option value="create_new">Create new facility</option>
-                            <option value="skip">Skip row</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-3">
-                          <input
-                            value={row.address}
-                            onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
-                            className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
-                          />
-                        </td>
-                      </tr>
-                    ))
+                    reviewRows.map((row) => {
+                      const issue = importRowBlockingReason(row);
+
+                      return (
+                        <tr key={row.id} className={issue ? "bg-orange-50/60" : undefined}>
+                          <td className="px-3 py-3">
+                            <p className="font-bold text-slate-950">{row.facilityName}</p>
+                            <p className="text-xs text-slate-500">
+                              {row.appointmentTime || "Time missing"} - {row.studyCount ?? 0} studies
+                            </p>
+                            {issue ? <p className="mt-1 text-xs font-semibold text-orange-700">{issue}</p> : null}
+                          </td>
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-slate-900">
+                              {row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : "No likely match"}
+                            </p>
+                            {row.action === "needs_review" || row.action === "use_existing" ? (
+                              <FacilityMatchSelect row={row} facilities={facilities} idPrefix="desktop" onUpdateRow={updateReviewRow} />
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3">
+                            <Badge tone={row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate"}>
+                              {row.confidence}%
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={row.action}
+                              onChange={(event) => updateReviewRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
+                              className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+                            >
+                              <option value="needs_review">Needs review</option>
+                              <option value="use_existing">Use selected existing facility</option>
+                              <option value="create_new">Create new facility</option>
+                              <option value="skip">Skip row</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              value={row.address}
+                              onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
+                              className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
+                            />
+                            {row.action === "create_new" ? (
+                              <p className="mt-1 text-xs text-slate-500">Blank address blocks confirmation.</p>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

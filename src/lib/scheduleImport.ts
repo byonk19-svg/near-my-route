@@ -1,6 +1,9 @@
 import type { Facility, ImportReviewRow, RouteStop } from "./types";
 
-const STUDY_COUNT_PATTERN = /(\d+)\s*(study|studies)/i;
+const TRAILING_STUDY_COUNT_PATTERN = /,?\s*(\d+)\s*(study|studies)\s*$/i;
+const LEADING_TIME_PATTERN = /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*,?\s*/i;
+const AUTO_MATCH_CONFIDENCE = 75;
+const PLACEHOLDER_PATTERN = /^(unknown|tbd|n\/a|na|placeholder|imported facility(?: \d+)?)$/i;
 
 function normalize(value: string) {
   return value
@@ -9,9 +12,49 @@ function normalize(value: string) {
     .trim();
 }
 
+function normalizeWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function startsWithNormalized(value: string, prefix: string) {
+  const normalizedValue = normalizeWords(value);
+  const normalizedPrefix = normalizeWords(prefix);
+  return normalizedValue === normalizedPrefix || normalizedValue.startsWith(`${normalizedPrefix} `);
+}
+
+function splitFacilityAndAddress(value: string, facilities: Facility[]) {
+  const knownFacility = [...facilities]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((facility) => startsWithNormalized(value, facility.name));
+
+  if (knownFacility) {
+    const facilityName = knownFacility.name;
+    const address = value
+      .slice(facilityName.length)
+      .replace(/^\s*,\s*/, "")
+      .trim();
+
+    return { facilityName, address };
+  }
+
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) {
+    return { facilityName: value.trim(), address: "" };
+  }
+
+  return {
+    facilityName: parts[0],
+    address: parts.slice(1).join(", "),
+  };
+}
+
 function matchFacility(name: string, address: string, facilities: Facility[]) {
   const normalizedName = normalize(name);
   const normalizedAddress = normalize(address);
+  const hasStreetLikeAddress = /^\d/.test(address.trim()) && normalizedAddress.length >= 8;
 
   return facilities
     .map((facility) => {
@@ -19,11 +62,13 @@ function matchFacility(name: string, address: string, facilities: Facility[]) {
       const facilityAddress = normalize(facility.address);
       let confidence = 0;
 
-      if (facilityName === normalizedName) confidence += 80;
-      if (facilityName.includes(normalizedName) || normalizedName.includes(facilityName)) {
+      if (normalizedName && facilityName === normalizedName) confidence += 80;
+      if (normalizedName && (facilityName.includes(normalizedName) || normalizedName.includes(facilityName))) {
         confidence += 45;
       }
-      if (normalizedAddress && facilityAddress.includes(normalizedAddress.slice(0, 8))) {
+      if (normalizedAddress && facilityAddress === normalizedAddress) {
+        confidence += 35;
+      } else if (hasStreetLikeAddress && facilityAddress.includes(normalizedAddress.slice(0, 8))) {
         confidence += 20;
       }
 
@@ -32,29 +77,51 @@ function matchFacility(name: string, address: string, facilities: Facility[]) {
     .sort((a, b) => b.confidence - a.confidence)[0];
 }
 
+function isPlaceholder(value: string) {
+  return PLACEHOLDER_PATTERN.test(value.trim());
+}
+
+export function importRowBlockingReason(row: ImportReviewRow) {
+  if (row.action === "skip") return undefined;
+  if (!row.appointmentTime?.trim()) return "Add an appointment time or skip this row.";
+  if (!row.facilityName.trim() || isPlaceholder(row.facilityName)) return "Add a real facility name or skip this row.";
+  if (row.action === "needs_review") return "Choose an existing facility, create a new facility, or skip.";
+  if (row.action === "use_existing" && !row.matchedFacilityId) return "Select an existing facility before confirming.";
+  if (row.action === "create_new" && (!row.address.trim() || isPlaceholder(row.address))) {
+    return "Add a full address before creating a new facility.";
+  }
+  return undefined;
+}
+
 export function parseScheduleText(text: string, facilities: Facility[]): ImportReviewRow[] {
   return text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const [appointmentTime = "", facilityName = "", address = "", studyText = ""] = line
-        .split(",")
-        .map((part) => part.trim());
+      const timeMatch = line.match(LEADING_TIME_PATTERN);
+      const appointmentTime = timeMatch?.[1]?.trim() ?? "";
+      const withoutTime = timeMatch ? line.slice(timeMatch[0].length).trim() : line;
+      const studyMatch = withoutTime.match(TRAILING_STUDY_COUNT_PATTERN);
+      const studyCount = studyMatch ? Number(studyMatch[1]) : undefined;
+      const middle = studyMatch
+        ? withoutTime.slice(0, studyMatch.index).replace(/,\s*$/, "").trim()
+        : withoutTime.trim();
+      const { facilityName, address } = splitFacilityAndAddress(middle, facilities);
       const match = matchFacility(facilityName, address, facilities);
-      const studyMatch = studyText.match(STUDY_COUNT_PATTERN);
       const confidence = match?.confidence ?? 0;
+      const autoUseExisting = Boolean(match?.facility.id && confidence >= AUTO_MATCH_CONFIDENCE);
 
       return {
         id: `import-${index}-${Date.now()}`,
         raw: line,
         appointmentTime,
-        facilityName: facilityName || `Imported facility ${index + 1}`,
+        facilityName,
         address,
-        studyCount: studyMatch ? Number(studyMatch[1]) : undefined,
-        matchedFacilityId: confidence >= 45 ? match.facility.id : undefined,
+        studyCount,
+        matchedFacilityId: autoUseExisting ? match.facility.id : match?.facility.id,
         confidence,
-        action: confidence >= 45 ? "use_existing" : "create_new",
+        action: autoUseExisting ? "use_existing" : "needs_review",
       };
     });
 }
@@ -78,11 +145,13 @@ export function applyImportRows(
   const routeStops: RouteStop[] = [];
 
   rows
-    .filter((row) => row.action !== "skip")
+    .filter((row) => row.action !== "skip" && row.action !== "needs_review")
     .forEach((row, index) => {
       let facilityId = row.matchedFacilityId;
 
-      if (row.action === "create_new" || !facilityId) {
+      if (importRowBlockingReason(row)) return;
+
+      if (row.action === "create_new") {
         const coordinates = temporaryCoordinates(index);
         facilityId = `facility-${Date.now()}-${index}`;
         nextFacilities.push({
@@ -99,6 +168,8 @@ export function applyImportRows(
           notes: "Imported from pasted schedule. Confirm address and contacts.",
         });
       }
+
+      if (!facilityId) return;
 
       routeStops.push({
         id: `stop-${Date.now()}-${index}`,

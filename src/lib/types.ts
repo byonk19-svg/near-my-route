@@ -109,5 +109,5 @@ export type ImportReviewRow = {
   studyCount?: number;
   matchedFacilityId?: string;
   confidence: number;
-  action: "use_existing" | "create_new" | "skip";
+  action: "needs_review" | "use_existing" | "create_new" | "skip";
 };
