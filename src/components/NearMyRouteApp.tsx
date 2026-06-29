@@ -793,26 +793,115 @@ function FacilityMatchSelect({
           className="h-10 min-w-0 flex-1 text-sm font-medium text-slate-900 outline-none"
         />
       </div>
-      <label className="mt-2 block text-xs font-bold uppercase text-slate-500">
+      <label className="mt-2 block text-xs font-bold uppercase text-slate-500" htmlFor={`${searchId}-select`}>
         Existing facility
-        <select
-          value={row.matchedFacilityId ?? ""}
-          onChange={(event) =>
-            onUpdateRow(row.id, {
-              matchedFacilityId: event.target.value || undefined,
-              action: event.target.value ? "use_existing" : "needs_review",
-            })
-          }
-          className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-        >
-          <option value="">Choose existing facility</option>
-          {visibleFacilities.map((facility) => (
-            <option key={facility.id} value={facility.id}>
-              {facility.name} - {facility.address}
-            </option>
-          ))}
-        </select>
       </label>
+      <select
+        id={`${searchId}-select`}
+        value={row.matchedFacilityId ?? ""}
+        onChange={(event) =>
+          onUpdateRow(row.id, {
+            matchedFacilityId: event.target.value || undefined,
+            action: event.target.value ? "use_existing" : "needs_review",
+          })
+        }
+        className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
+      >
+        <option value="">Choose existing facility</option>
+        {visibleFacilities.map((facility) => (
+          <option key={facility.id} value={facility.id}>
+            {facility.name} - {facility.address}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function canCollapseImportRow(row: ImportReviewRow, issue?: string) {
+  return row.action === "use_existing" && !issue && row.confidence >= 75 && Boolean(row.matchedFacilityId);
+}
+
+function ImportMatchedSummary({
+  row,
+  facilityById,
+  idPrefix,
+  isExpanded,
+  onChange,
+}: {
+  row: ImportReviewRow;
+  facilityById: Map<string, Facility>;
+  idPrefix: string;
+  isExpanded: boolean;
+  onChange: () => void;
+}) {
+  const match = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId) : undefined;
+  const controlsId = `${idPrefix}-import-row-controls-${row.id}`;
+
+  return (
+    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase text-green-700">Matched existing facility</p>
+          <p className="mt-1 font-black text-green-950">{match?.name ?? row.facilityName}</p>
+          <p className="mt-1 text-xs font-semibold text-green-800">
+            {row.confidence}% match - {match?.address ?? row.address}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label={`Change match for ${row.facilityName}`}
+          aria-expanded={isExpanded}
+          aria-controls={isExpanded ? controlsId : undefined}
+          onClick={onChange}
+          className="shrink-0 rounded-md border border-green-300 bg-white px-3 py-2 text-xs font-bold text-green-800"
+        >
+          Change
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ImportRowControls({
+  row,
+  facilities,
+  idPrefix,
+  onUpdateRow,
+}: {
+  row: ImportReviewRow;
+  facilities: Facility[];
+  idPrefix: string;
+  onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
+}) {
+  return (
+    <div id={`${idPrefix}-import-row-controls-${row.id}`}>
+      <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-action`}>
+        Action
+      </label>
+      <select
+        id={`${idPrefix}-${row.id}-action`}
+        value={row.action}
+        onChange={(event) => onUpdateRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
+        className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
+      >
+        <option value="needs_review">Needs review</option>
+        <option value="use_existing">Use selected existing facility</option>
+        <option value="create_new">Create new facility</option>
+        <option value="skip">Skip row</option>
+      </select>
+      {row.action === "needs_review" || row.action === "use_existing" ? (
+        <FacilityMatchSelect row={row} facilities={facilities} idPrefix={idPrefix} onUpdateRow={onUpdateRow} />
+      ) : null}
+      <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
+        Edit address
+      </label>
+      <input
+        id={`${idPrefix}-${row.id}-address`}
+        value={row.address}
+        onChange={(event) => onUpdateRow(row.id, { address: event.target.value })}
+        className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-900"
+      />
     </div>
   );
 }
@@ -821,11 +910,15 @@ function ImportReviewCards({
   rows,
   facilities,
   facilityById,
+  expandedRowIds,
+  onToggleRowExpansion,
   onUpdateRow,
 }: {
   rows: ImportReviewRow[];
   facilities: Facility[];
   facilityById: Map<string, Facility>;
+  expandedRowIds: Record<string, boolean>;
+  onToggleRowExpansion: (rowId: string) => void;
   onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
 }) {
   if (rows.length === 0) {
@@ -842,10 +935,14 @@ function ImportReviewCards({
         const matchName = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : undefined;
         const confidenceTone = row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate";
         const issue = importRowBlockingReason(row);
+        const isExpanded = Boolean(expandedRowIds[row.id]);
+        const canCollapseMatch = canCollapseImportRow(row, issue);
+        const showControls = !canCollapseMatch || isExpanded;
 
         return (
           <article
             key={row.id}
+            data-testid={`import-review-card-${index + 1}`}
             className={cx(
               "rounded-lg border bg-white p-3 shadow-sm",
               row.action === "skip" ? "border-slate-200 opacity-70" : "border-slate-200",
@@ -862,39 +959,32 @@ function ImportReviewCards({
               </div>
               <Badge tone={confidenceTone}>{row.confidence}% match</Badge>
             </div>
-            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-sm">
-              <p className="text-xs font-bold uppercase text-slate-500">Matched facility</p>
-              <p className="mt-1 font-bold text-slate-900">{matchName ?? "No likely match"}</p>
-            </div>
-            <label className="mt-3 block text-xs font-bold uppercase text-slate-500">
-              Action
-              <select
-                value={row.action}
-                onChange={(event) => onUpdateRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
-                className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-              >
-                <option value="needs_review">Needs review</option>
-                <option value="use_existing">Use selected existing facility</option>
-                <option value="create_new">Create new facility</option>
-                <option value="skip">Skip row</option>
-              </select>
-            </label>
-            {row.action === "needs_review" || row.action === "use_existing" ? (
-              <FacilityMatchSelect row={row} facilities={facilities} idPrefix="mobile" onUpdateRow={onUpdateRow} />
+            {canCollapseMatch ? (
+              <div className="mt-3">
+                <ImportMatchedSummary
+                  row={row}
+                  facilityById={facilityById}
+                  idPrefix="mobile"
+                  isExpanded={isExpanded}
+                  onChange={() => onToggleRowExpansion(row.id)}
+                />
+              </div>
+            ) : (
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-sm">
+                <p className="text-xs font-bold uppercase text-slate-500">Matched facility</p>
+                <p className="mt-1 font-bold text-slate-900">{matchName ?? "No likely match"}</p>
+              </div>
+            )}
+            {showControls ? (
+              <ImportRowControls row={row} facilities={facilities} idPrefix="mobile" onUpdateRow={onUpdateRow} />
             ) : null}
-            <label className="mt-3 block text-xs font-bold uppercase text-slate-500">
-              Edit address
-              <input
-                value={row.address}
-                onChange={(event) => onUpdateRow(row.id, { address: event.target.value })}
-                className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-900"
-              />
-            </label>
             {issue ? <p className="mt-2 text-xs font-semibold text-orange-700">{issue}</p> : null}
-            <details className="mt-3 text-xs text-slate-500">
-              <summary className="cursor-pointer font-bold text-slate-600">Show original text</summary>
-              <p className="mt-1 rounded-md bg-slate-50 p-2 font-mono">{row.raw}</p>
-            </details>
+            {showControls || issue ? (
+              <details className="mt-3 text-xs text-slate-500">
+                <summary className="cursor-pointer font-bold text-slate-600">Show original text</summary>
+                <p className="mt-1 rounded-md bg-slate-50 p-2 font-mono">{row.raw}</p>
+              </details>
+            ) : null}
           </article>
         );
       })}
@@ -1007,6 +1097,7 @@ export default function NearMyRouteApp() {
   const [contactStatusFilter, setContactStatusFilter] = useState("All");
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
   const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
+  const [expandedImportRowIds, setExpandedImportRowIds] = useState<Record<string, boolean>>({});
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
   const [dogfoodChecked, setDogfoodChecked] = useState<Record<string, boolean>>({});
   const [dogfoodNotes, setDogfoodNotes] = useState("");
@@ -1238,6 +1329,15 @@ export default function NearMyRouteApp() {
 
   function updateReviewRow(rowId: string, patch: Partial<ImportReviewRow>) {
     setReviewRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function parseImportSchedule() {
+    setReviewRows(parseScheduleText(scheduleText, facilities));
+    setExpandedImportRowIds({});
+  }
+
+  function toggleImportRowExpansion(rowId: string) {
+    setExpandedImportRowIds((current) => ({ ...current, [rowId]: !current[rowId] }));
   }
 
   function confirmImportedRoute() {
@@ -1990,7 +2090,7 @@ export default function NearMyRouteApp() {
               className="mt-4 min-h-64 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
             />
             <div className="mt-3 flex gap-2">
-              <Button tone="primary" onClick={() => setReviewRows(parseScheduleText(scheduleText, facilities))}>
+              <Button tone="primary" onClick={parseImportSchedule}>
                 Parse Schedule
               </Button>
               <Button onClick={() => setScheduleText(sampleSchedule)}>Use sample</Button>
@@ -2044,7 +2144,14 @@ export default function NearMyRouteApp() {
               </Button>
             </div>
             <div className="mt-4 lg:hidden">
-              <ImportReviewCards rows={reviewRows} facilities={facilities} facilityById={facilityById} onUpdateRow={updateReviewRow} />
+              <ImportReviewCards
+                rows={reviewRows}
+                facilities={facilities}
+                facilityById={facilityById}
+                expandedRowIds={expandedImportRowIds}
+                onToggleRowExpansion={toggleImportRowExpansion}
+                onUpdateRow={updateReviewRow}
+              />
             </div>
             <div className="mt-4 hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[760px] text-left text-sm">
@@ -2065,11 +2172,18 @@ export default function NearMyRouteApp() {
                       </td>
                     </tr>
                   ) : (
-                    reviewRows.map((row) => {
+                    reviewRows.map((row, index) => {
                       const issue = importRowBlockingReason(row);
+                      const isExpanded = Boolean(expandedImportRowIds[row.id]);
+                      const canCollapseMatch = canCollapseImportRow(row, issue);
+                      const showControls = !canCollapseMatch || isExpanded;
 
                       return (
-                        <tr key={row.id} className={issue ? "bg-orange-50/60" : undefined}>
+                        <tr
+                          key={row.id}
+                          data-testid={`import-review-row-${index + 1}`}
+                          className={issue ? "bg-orange-50/60" : undefined}
+                        >
                           <td className="px-3 py-3">
                             <p className="font-bold text-slate-950">{row.facilityName}</p>
                             <p className="text-xs text-slate-500">
@@ -2078,12 +2192,34 @@ export default function NearMyRouteApp() {
                             {issue ? <p className="mt-1 text-xs font-semibold text-orange-700">{issue}</p> : null}
                           </td>
                           <td className="px-3 py-3">
-                            <p className="font-semibold text-slate-900">
-                              {row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : "No likely match"}
-                            </p>
-                            {row.action === "needs_review" || row.action === "use_existing" ? (
-                              <FacilityMatchSelect row={row} facilities={facilities} idPrefix="desktop" onUpdateRow={updateReviewRow} />
-                            ) : null}
+                            {canCollapseMatch ? (
+                              <div className="min-w-72">
+                                <ImportMatchedSummary
+                                  row={row}
+                                  facilityById={facilityById}
+                                  idPrefix="desktop"
+                                  isExpanded={isExpanded}
+                                  onChange={() => toggleImportRowExpansion(row.id)}
+                                />
+                                {showControls ? (
+                                  <ImportRowControls
+                                    row={row}
+                                    facilities={facilities}
+                                    idPrefix="desktop"
+                                    onUpdateRow={updateReviewRow}
+                                  />
+                                ) : null}
+                              </div>
+                            ) : (
+                              <>
+                                <p className="font-semibold text-slate-900">
+                                  {row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : "No likely match"}
+                                </p>
+                                {row.action === "needs_review" || row.action === "use_existing" ? (
+                                  <FacilityMatchSelect row={row} facilities={facilities} idPrefix="desktop" onUpdateRow={updateReviewRow} />
+                                ) : null}
+                              </>
+                            )}
                           </td>
                           <td className="px-3 py-3">
                             <Badge tone={row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate"}>
@@ -2091,26 +2227,42 @@ export default function NearMyRouteApp() {
                             </Badge>
                           </td>
                           <td className="px-3 py-3">
-                            <select
-                              value={row.action}
-                              onChange={(event) => updateReviewRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
-                              className="h-9 rounded-md border border-slate-200 px-2 text-sm"
-                            >
-                              <option value="needs_review">Needs review</option>
-                              <option value="use_existing">Use selected existing facility</option>
-                              <option value="create_new">Create new facility</option>
-                              <option value="skip">Skip row</option>
-                            </select>
+                            {canCollapseMatch ? (
+                              <span className="text-xs font-bold uppercase text-green-700">
+                                {showControls ? "Editing" : "Ready"}
+                              </span>
+                            ) : (
+                              <select
+                                aria-label={`Action for ${row.facilityName}`}
+                                value={row.action}
+                                onChange={(event) => updateReviewRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
+                                className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+                              >
+                                <option value="needs_review">Needs review</option>
+                                <option value="use_existing">Use selected existing facility</option>
+                                <option value="create_new">Create new facility</option>
+                                <option value="skip">Skip row</option>
+                              </select>
+                            )}
                           </td>
                           <td className="px-3 py-3">
-                            <input
-                              value={row.address}
-                              onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
-                              className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
-                            />
-                            {row.action === "create_new" ? (
-                              <p className="mt-1 text-xs text-slate-500">Blank address blocks confirmation.</p>
-                            ) : null}
+                            {canCollapseMatch ? (
+                              <p className="text-xs font-semibold text-slate-500">
+                                {showControls ? "Use expanded controls." : "No changes needed."}
+                              </p>
+                            ) : (
+                              <>
+                                <input
+                                  aria-label={`Address for ${row.facilityName}`}
+                                  value={row.address}
+                                  onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
+                                  className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
+                                />
+                                {row.action === "create_new" ? (
+                                  <p className="mt-1 text-xs text-slate-500">Blank address blocks confirmation.</p>
+                                ) : null}
+                              </>
+                            )}
                           </td>
                         </tr>
                       );

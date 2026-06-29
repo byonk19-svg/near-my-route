@@ -49,6 +49,24 @@ async function hasVisible(locator) {
   return false;
 }
 
+async function visibleCount(locator) {
+  let visible = 0;
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible()) visible += 1;
+  }
+  return visible;
+}
+
+async function firstVisible(locator) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const item = locator.nth(index);
+    if (await item.isVisible()) return item;
+  }
+  throw new Error("No visible locator match");
+}
+
 async function resetAndOpenImport(page) {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.evaluate(() => window.localStorage.clear());
@@ -67,6 +85,41 @@ async function runHappyPath(page) {
   await page.getByText("Memorial SNF").first().waitFor();
   assert.equal(await page.getByText("No likely match").count(), 0);
   assert.equal(await page.getByText("Resolve uncertain rows before confirming.").count(), 0);
+
+  const memorialCard = page.getByTestId("import-review-card-1");
+  const parkCard = page.getByTestId("import-review-card-2");
+  await memorialCard.getByText("99% match").first().waitFor();
+  assert.equal(await memorialCard.getByText("Matched existing facility").isVisible(), true);
+  const memorialChange = memorialCard.getByRole("button", { name: "Change match for Memorial SNF" });
+  assert.equal(await memorialChange.isVisible(), true);
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "false");
+  assert.equal(await visibleCount(memorialCard.getByLabel("Action")), 0);
+  assert.equal(await visibleCount(memorialCard.getByLabel("Search existing facilities")), 0);
+  assert.equal(await visibleCount(memorialCard.getByLabel("Existing facility")), 0);
+  assert.equal(await visibleCount(memorialCard.getByLabel("Edit address")), 0);
+  assert.equal(await visibleCount(memorialCard.getByText("Show original text")), 0);
+
+  await memorialChange.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "true");
+  assert.equal(await memorialCard.getByLabel("Action").isVisible(), true);
+  assert.equal(await memorialCard.getByLabel("Search existing facilities").isVisible(), true);
+  assert.equal(await memorialCard.getByLabel("Existing facility").isVisible(), true);
+  assert.equal(await memorialCard.getByLabel("Edit address").isVisible(), true);
+  assert.equal(await memorialCard.getByText("Show original text").isVisible(), true);
+  assert.equal(await visibleCount(parkCard.getByLabel("Action")), 0);
+
+  await page.keyboard.press("Enter");
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "false");
+  assert.equal(await visibleCount(memorialCard.getByLabel("Action")), 0);
+
+  await memorialChange.click();
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "true");
+  await clickButton(page, "Parse Schedule");
+  const resetMemorialCard = page.getByTestId("import-review-card-1");
+  const resetMemorialChange = resetMemorialCard.getByRole("button", { name: "Change match for Memorial SNF" });
+  assert.equal(await resetMemorialChange.getAttribute("aria-expanded"), "false");
+  assert.equal(await visibleCount(resetMemorialCard.getByLabel("Action")), 0);
 
   const confirm = page.getByRole("button", { name: "Confirm 3 Stops" }).first();
   assert.equal(await confirm.isEnabled(), true);
@@ -94,11 +147,21 @@ async function runGuardrailPath(page) {
   const blocked = page.getByRole("button", { name: "Resolve 2 Rows Before Confirming" }).first();
   assert.equal(await blocked.isDisabled(), true);
 
-  const parkCard = page.locator("article").filter({ hasText: "Park Manor" }).first();
+  const parkCard = page.getByTestId("import-review-card-1");
+  assert.equal(await visibleCount(parkCard.getByRole("button", { name: /Change match/ })), 0);
+  assert.equal(await parkCard.getByLabel("Action").isVisible(), true);
+  assert.equal(await parkCard.getByLabel("Search existing facilities").isVisible(), true);
+  assert.equal(await parkCard.getByLabel("Existing facility").isVisible(), true);
+  assert.equal(await parkCard.getByLabel("Edit address").isVisible(), true);
   await parkCard.locator("select").first().selectOption("skip");
 
-  const cypressCard = page.locator("article").filter({ hasText: "Cypress Care" }).first();
+  const cypressCard = page.getByTestId("import-review-card-2");
+  assert.equal(await cypressCard.getByLabel("Action").isVisible(), true);
+  assert.equal(await cypressCard.getByLabel("Search existing facilities").isVisible(), true);
+  assert.equal(await cypressCard.getByLabel("Existing facility").isVisible(), true);
+  assert.equal(await cypressCard.getByLabel("Edit address").isVisible(), true);
   await cypressCard.locator("select").first().selectOption("create_new");
+  assert.equal(await page.getByText("Resolve uncertain rows before confirming.").count(), 0);
 
   const confirm = page.getByRole("button", { name: "Confirm 1 Stop" }).first();
   assert.equal(await confirm.isEnabled(), true);
@@ -118,12 +181,27 @@ async function runGuardrailPath(page) {
 async function runDesktopGuardrailCheck(page) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await resetAndOpenImport(page);
-  await page.locator("textarea").fill("10:15 AM, Park Manor, Houston, TX, 1 study");
+  await page.locator("textarea").fill(
+    "8:30 AM, Memorial SNF, 12620 Memorial Dr, Houston, TX, 2 studies\n10:15 AM, Park Manor, Houston, TX, 1 study",
+  );
   await clickButton(page, "Parse Schedule");
   await page.getByText("Resolve uncertain rows before confirming.").first().waitFor();
   const blocked = page.getByRole("button", { name: "Resolve 1 Row Before Confirming" }).first();
   assert.equal(await blocked.isDisabled(), true);
-  assert.equal(await hasVisible(page.getByLabel("Search existing facilities")), true);
+
+  const memorialRow = page.getByTestId("import-review-row-1");
+  const parkRow = page.getByTestId("import-review-row-2");
+  const memorialChange = await firstVisible(memorialRow.getByRole("button", { name: "Change match for Memorial SNF" }));
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "false");
+  assert.equal(await visibleCount(memorialRow.getByLabel("Search existing facilities")), 0);
+  assert.equal(await hasVisible(parkRow.getByLabel("Search existing facilities")), true);
+  assert.equal(await hasVisible(parkRow.getByLabel("Action for Park Manor")), true);
+
+  await memorialChange.click();
+  assert.equal(await memorialChange.getAttribute("aria-expanded"), "true");
+  assert.equal(await hasVisible(memorialRow.getByLabel("Search existing facilities")), true);
+  assert.equal(await hasVisible(memorialRow.getByLabel("Action")), true);
+  assert.equal(await hasVisible(parkRow.getByLabel("Search existing facilities")), true);
 }
 
 const browser = await chromium.launch();
