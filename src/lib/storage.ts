@@ -4,6 +4,8 @@ export type NearMyRouteState = {
   facilities: Facility[];
   routeStops: RouteStop[];
   outreachLogs: OutreachLog[];
+  dogfoodChecked?: Record<string, boolean>;
+  dogfoodNotes?: string;
 };
 
 const STORAGE_KEY = "near-my-route-state-v1";

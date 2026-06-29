@@ -22,6 +22,7 @@ Open the printed local URL, usually `http://localhost:3000`.
 - Google Maps directions handoff for the current route and preview routes with a selected add-on inserted
 - Facility detail drawer with contacts, notes, visit history, outreach history, and PHI-safe add-on template
 - Today Status strip, Outreach triage queue, copy-message behavior, do-not-contact state, and tentative add-to-route
+- One-route dogfood checklist and notes for capturing workflow friction before routing or database work
 - LocalStorage persistence under `near-my-route-state-v1`
 
 ## Route calculation
@@ -71,6 +72,10 @@ The default follow-up threshold is 14 days. The threshold can still be adjusted 
 ## Mobile import review
 
 The Import Schedule flow is built for a phone-first review pass. Paste tomorrow's stops, parse the schedule, review each imported row as a card, correct match/action/address fields, then confirm the route. Patient names and clinical details do not belong in the pasted schedule.
+
+## Dogfood checklist
+
+The route home includes a lightweight one-route checklist for dogfooding the current workflow before adding OSRM or Supabase. Use it to import a real route, review text candidates, log replies, add or remove a tentative stop, open Google Maps, and capture workflow friction. Dogfood notes should describe unclear wording, slow steps, route changes, and tool switches only; do not store patient names or clinical details.
 
 ## Next architecture steps
 

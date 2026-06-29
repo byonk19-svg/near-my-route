@@ -68,6 +68,16 @@ const outreachStatuses: OutreachStatus[] = [
   "do_not_contact",
 ];
 
+const dogfoodTasks = [
+  { id: "import", label: "Import tomorrow's route" },
+  { id: "text", label: "Review text candidates" },
+  { id: "replies", label: "Log every reply" },
+  { id: "add", label: "Add tentative stop" },
+  { id: "remove", label: "Remove tentative stop if needed" },
+  { id: "maps", label: "Open Google Maps" },
+  { id: "friction", label: "Capture friction" },
+] as const;
+
 type AppTab = "Near My Route" | "Facilities" | "Import Schedule" | "Outreach";
 
 type RouteView =
@@ -317,6 +327,61 @@ function BestAddOnCard({
   );
 }
 
+function DogfoodChecklist({
+  checked,
+  notes,
+  className,
+  onToggle,
+  onNotesChange,
+}: {
+  checked: Record<string, boolean>;
+  notes: string;
+  className?: string;
+  onToggle: (taskId: string, checked: boolean) => void;
+  onNotesChange: (notes: string) => void;
+}) {
+  const completed = dogfoodTasks.filter((task) => checked[task.id]).length;
+
+  return (
+    <section className={cx("rounded-lg border border-slate-200 bg-white p-3", className)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Dogfood run</p>
+          <h2 className="mt-1 text-sm font-black text-slate-950">One real route checklist</h2>
+        </div>
+        <Badge tone={completed === dogfoodTasks.length ? "green" : "blue"}>
+          {completed}/{dogfoodTasks.length}
+        </Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {dogfoodTasks.map((task) => (
+          <label key={task.id} className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(checked[task.id])}
+              onChange={(event) => onToggle(task.id, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600"
+            />
+            {task.label}
+          </label>
+        ))}
+      </div>
+      <label className="mt-3 block text-xs font-bold uppercase text-slate-500">
+        Dogfood notes
+        <textarea
+          value={notes}
+          onChange={(event) => onNotesChange(event.target.value)}
+          placeholder="Write what felt slow, unclear, or manual. Note wording, route changes, and tool switches."
+          className="mt-1 min-h-24 w-full resize-y rounded-md border border-slate-200 p-2 text-sm font-medium normal-case text-slate-900"
+        />
+      </label>
+      <p className="mt-2 text-xs font-semibold text-slate-500">
+        Capture workflow friction, not patient details.
+      </p>
+    </section>
+  );
+}
+
 function DetailDrawer({
   facility,
   opportunity,
@@ -325,7 +390,6 @@ function DetailDrawer({
   showMessage,
   className,
   onCloseMessage,
-  onAsk,
   onCall,
   onMarkContacted,
   onLogStatus,
@@ -342,7 +406,6 @@ function DetailDrawer({
   showMessage: boolean;
   className?: string;
   onCloseMessage: () => void;
-  onAsk: () => void;
   onCall: () => void;
   onMarkContacted: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
@@ -365,6 +428,7 @@ function DetailDrawer({
   const contact = primaryContact(facility);
   const message = safeMessage(contact?.name);
   const canAddRoute = Boolean(opportunity);
+  const canContact = todayStatus !== "do_not_contact";
   const responseActions =
     todayStatus === "added" || todayStatus === "no_patients_today" || todayStatus === "do_not_contact"
       ? []
@@ -470,6 +534,11 @@ function DetailDrawer({
             </Button>
           </div>
         ) : null}
+        {todayStatus === "not_contacted" ? (
+          <Button className="mt-3 w-full" tone="primary" onClick={onMarkContacted}>
+            <Check size={15} /> Copy and log text
+          </Button>
+        ) : null}
         {responseActions.length > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">{responseActions}</div> : null}
         {todayStatus === "possible_add_on" && canAddRoute ? (
           <Button className="mt-2 w-full" tone="primary" onClick={onAddRoute}>
@@ -491,6 +560,24 @@ function DetailDrawer({
           </Button>
         ) : null}
       </section>
+
+      {canContact || opportunity ? (
+        <section className="mt-5">
+          <h3 className="text-sm font-black text-slate-900">Support tools</h3>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {canContact ? (
+              <Button onClick={onCall}>
+                <Phone size={15} /> Call
+              </Button>
+            ) : null}
+            {opportunity ? (
+              <Button onClick={onPreviewRoute}>
+                <ExternalLink size={15} /> Preview route
+              </Button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {showMessage ? (
         <section className="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-3">
@@ -542,28 +629,6 @@ function DetailDrawer({
           )}
         </div>
       </section>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        <Button tone="primary" onClick={onMarkContacted}>
-          <Check size={15} /> Copy text
-        </Button>
-        <Button tone="primary" onClick={onAsk}>
-          <Send size={15} /> Ask for Add-ons
-        </Button>
-        <Button onClick={onCall}>
-          <Phone size={15} /> Call
-        </Button>
-        {opportunity ? (
-          <>
-            <Button onClick={onPreviewRoute}>
-              <ExternalLink size={15} /> Preview route
-            </Button>
-            <Button disabled={todayStatus === "no_patients_today" || todayStatus === "do_not_contact"} onClick={onAddRoute}>
-              <Plus size={15} /> Add Tentatively
-            </Button>
-          </>
-        ) : null}
-      </div>
     </aside>
   );
 }
@@ -889,6 +954,8 @@ export default function NearMyRouteApp() {
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
   const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
+  const [dogfoodChecked, setDogfoodChecked] = useState<Record<string, boolean>>({});
+  const [dogfoodNotes, setDogfoodNotes] = useState("");
   const [showMessage, setShowMessage] = useState(false);
   const [copyFeedbackByFacilityId, setCopyFeedbackByFacilityId] = useState<Record<string, "copied" | "failed">>({});
   const [hydrated, setHydrated] = useState(false);
@@ -906,6 +973,8 @@ export default function NearMyRouteApp() {
         setFacilities(stored.facilities);
         setRouteStops(stored.routeStops);
         setOutreachLogs(stored.outreachLogs);
+        setDogfoodChecked(stored.dogfoodChecked ?? {});
+        setDogfoodNotes(stored.dogfoodNotes ?? "");
         setHydrated(true);
       });
     } else {
@@ -914,8 +983,8 @@ export default function NearMyRouteApp() {
   }, []);
 
   useEffect(() => {
-    if (hydrated) saveStoredState({ facilities, routeStops, outreachLogs });
-  }, [facilities, routeStops, outreachLogs, hydrated]);
+    if (hydrated) saveStoredState({ facilities, routeStops, outreachLogs, dogfoodChecked, dogfoodNotes });
+  }, [dogfoodChecked, dogfoodNotes, facilities, routeStops, outreachLogs, hydrated]);
 
   useEffect(() => {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
@@ -1101,6 +1170,10 @@ export default function NearMyRouteApp() {
     setShowMessage(false);
   }
 
+  function updateDogfoodTask(taskId: string, checked: boolean) {
+    setDogfoodChecked((current) => ({ ...current, [taskId]: checked }));
+  }
+
   function updateReviewRow(rowId: string, patch: Partial<ImportReviewRow>) {
     setReviewRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
   }
@@ -1235,6 +1308,8 @@ export default function NearMyRouteApp() {
     setSelectedFacilityId("encompass-westchase");
     setShowMessage(false);
     setCopyFeedbackByFacilityId({});
+    setDogfoodChecked({});
+    setDogfoodNotes("");
     setReviewRows([]);
     setScheduleText(sampleSchedule);
   }
@@ -1311,7 +1386,6 @@ export default function NearMyRouteApp() {
               outreachLogs={selectedOutreachLogs}
               showMessage={showMessage}
               onCloseMessage={() => setShowMessage(false)}
-              onAsk={() => setShowMessage(true)}
               onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
               onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
               onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
@@ -1434,7 +1508,7 @@ export default function NearMyRouteApp() {
                       <button
                         key={stop.id}
                         type="button"
-                        onClick={() => selectFacility(facility.id)}
+                        onClick={() => openFacilityReview(facility.id)}
                       className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
@@ -1453,7 +1527,71 @@ export default function NearMyRouteApp() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
+              <summary className="cursor-pointer text-sm font-black text-slate-950">
+                Today route checklist ({dogfoodTasks.filter((task) => dogfoodChecked[task.id]).length}/{dogfoodTasks.length})
+              </summary>
+              <div className="mt-3">
+                <DogfoodChecklist
+                  checked={dogfoodChecked}
+                  notes={dogfoodNotes}
+                  className="border-0 p-0"
+                  onToggle={updateDogfoodTask}
+                  onNotesChange={setDogfoodNotes}
+                />
+              </div>
+            </details>
+            <div className="hidden lg:block">
+              <DogfoodChecklist
+                checked={dogfoodChecked}
+                notes={dogfoodNotes}
+                onToggle={updateDogfoodTask}
+                onNotesChange={setDogfoodNotes}
+              />
+            </div>
+
+            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
+              <summary className="cursor-pointer text-sm font-black text-slate-950">Opportunity filters</summary>
+              <div className="mt-3">
+                <label className="block text-xs font-bold uppercase text-slate-500">
+                  Max detour: {maxDetourMinutes} minutes
+                  <input
+                    type="range"
+                    min="5"
+                    max="30"
+                    value={maxDetourMinutes}
+                    onChange={(event) => setMaxDetourMinutes(Number(event.target.value))}
+                    className="mt-2 w-full"
+                  />
+                </label>
+                <div className="mt-3 grid gap-2">
+                  <Toggle
+                    label="Show due for follow-up only"
+                    checked={notContactedRecentlyOnly}
+                    onChange={setNotContactedRecentlyOnly}
+                  />
+                  <Toggle label="Show known contacts only" checked={knownContactsOnly} onChange={setKnownContactsOnly} />
+                  <Toggle
+                    label="Show same-day friendly only"
+                    checked={sameDayFriendlyOnly}
+                    onChange={setSameDayFriendlyOnly}
+                  />
+                  <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
+                    Follow-up after
+                    <input
+                      type="number"
+                      min="1"
+                      value={followUpThresholdDays}
+                      onChange={(event) => setFollowUpThresholdDays(Number(event.target.value))}
+                      className="h-9 w-20 rounded-md border border-slate-200 px-2 text-sm font-bold text-slate-900"
+                    />
+                    days
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <div className="hidden rounded-lg border border-slate-200 bg-white p-3 lg:block">
               <div className="flex items-center gap-2">
                 <Filter size={15} className="text-slate-500" />
                 <h2 className="text-sm font-black text-slate-950">Opportunity filters</h2>
@@ -1495,7 +1633,46 @@ export default function NearMyRouteApp() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
+              <summary className="cursor-pointer text-sm font-black text-slate-950">
+                More opportunities ({opportunities.length})
+              </summary>
+              <div className="mt-3 space-y-4">
+                {groupedOpportunities.map(({ group, items }) => {
+                  if (items.length === 0) return null;
+                  if (group === "Maybe Later" && maxDetourMinutes <= 10) return null;
+
+                  return (
+                    <section key={group}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h2 className="text-sm font-black text-slate-950">
+                          {group === "Good Options" ? "Along the Way" : group}
+                        </h2>
+                        <Badge tone={group === "Not Worth It Today" ? "slate" : "orange"}>{items.length}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {items.map((opportunity) => (
+                          <OpportunityCard
+                            key={opportunity.facility.id}
+                            opportunity={opportunity}
+                            rank={detourRankByFacilityId.get(opportunity.facility.id) ?? 0}
+                            selected={selectedFacilityId === opportunity.facility.id}
+                            todayStatus={todayStatusByFacilityId.get(opportunity.facility.id) ?? "not_contacted"}
+                            onSelect={() => selectFacility(opportunity.facility.id)}
+                            onReview={() => openFacilityReview(opportunity.facility.id)}
+                            onMarkContacted={() => logOutreach(opportunity.facility.id, "texted", "text", "Marked contacted from opportunity card.")}
+                            onAddTentatively={() => addTentatively(opportunity.facility.id)}
+                            onPreviewRoute={() => previewRouteWithAddOn(opportunity)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </details>
+
+            <div className="hidden space-y-4 lg:block">
               {groupedOpportunities.map(({ group, items }) => {
                 if (items.length === 0) return null;
                 if (group === "Maybe Later" && maxDetourMinutes <= 10) return null;
@@ -1549,7 +1726,6 @@ export default function NearMyRouteApp() {
             outreachLogs={selectedOutreachLogs}
             showMessage={showMessage}
             onCloseMessage={() => setShowMessage(false)}
-            onAsk={() => setShowMessage(true)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
@@ -1708,7 +1884,6 @@ export default function NearMyRouteApp() {
             outreachLogs={selectedOutreachLogs}
             showMessage={showMessage}
             onCloseMessage={() => setShowMessage(false)}
-            onAsk={() => setShowMessage(true)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged from Facilities view.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
@@ -1744,14 +1919,15 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-black">Review imported stops</h2>
-              <Button
-                tone="primary"
-                className="hidden sm:inline-flex"
-                disabled={reviewRows.length === 0}
-                onClick={confirmImportedRoute}
-              >
-                Confirm Route
-              </Button>
+              <div className="hidden sm:block">
+                <Button
+                  tone="primary"
+                  disabled={reviewRows.length === 0}
+                  onClick={confirmImportedRoute}
+                >
+                  Confirm Route
+                </Button>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-center">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
@@ -1853,7 +2029,8 @@ export default function NearMyRouteApp() {
             <div className="mt-4">
               <TodayStatusStrip counts={todayCounts} />
             </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <h3 className="mt-5 text-sm font-black text-slate-950">Current-day response queue</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {todayQueue.map(({ facility, opportunity, status, latestLog }) => (
                 <OutreachQueueCard
                   key={facility.id}
@@ -1906,8 +2083,11 @@ export default function NearMyRouteApp() {
               </table>
             </div>
             </details>
-            <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <h3 className="font-black">Manual log</h3>
+            <details className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer text-sm font-black text-slate-900">Manual log</summary>
+              <p className="mt-2 text-sm text-slate-500">
+                Use this only when the queue cards do not cover the update you need.
+              </p>
               <div className="mt-3 grid gap-3 md:grid-cols-4">
                 <select value={selectedFacilityId} onChange={(event) => setSelectedFacilityId(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
                   {facilities.map((facility) => (
@@ -1941,7 +2121,7 @@ export default function NearMyRouteApp() {
                   <MessageSquareText size={15} /> Open Template
                 </Button>
               </div>
-            </div>
+            </details>
           </section>
         </main>
       ) : null}
