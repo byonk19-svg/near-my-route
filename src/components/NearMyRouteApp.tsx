@@ -28,6 +28,7 @@ import {
   canAttemptSms,
   formatDaysAgo,
   friendlyValue,
+  isPlaceholderPhoneNumber,
   phoneContacts,
   primaryContact,
   safeMessage,
@@ -112,7 +113,7 @@ type OpportunitySnapshot = {
   reasonBadges: string[];
 };
 
-type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone";
+type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone" | "placeholder_phone";
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -406,6 +407,7 @@ function DetailDrawer({
   onStartText,
   onCopyMessage,
   onMarkTexted,
+  onUpdateContactPhone,
   onLogStatus,
   onAddRoute,
   onRemoveAddOn,
@@ -424,6 +426,7 @@ function DetailDrawer({
   onStartText: () => void;
   onCopyMessage: () => void;
   onMarkTexted: () => void;
+  onUpdateContactPhone: (contactId: string, phone: string) => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
   onAddRoute: () => void;
   onRemoveAddOn: () => void;
@@ -516,7 +519,23 @@ function DetailDrawer({
                   {item.primary ? <Badge tone="blue">Primary</Badge> : null}
                 </div>
                 <p className="mt-1 text-slate-500">{item.role ?? "SLP Contact"}</p>
-                <p className="mt-1 text-slate-600">{item.phone ?? item.email ?? "No contact method saved"}</p>
+                <label className="mt-2 block text-[11px] font-bold uppercase text-slate-500">
+                  Phone
+                  <input
+                    aria-label={`Phone for ${item.name}`}
+                    value={item.phone ?? ""}
+                    onChange={(event) => onUpdateContactPhone(item.id, event.target.value)}
+                    placeholder="Add phone number"
+                    inputMode="tel"
+                    className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold normal-case text-slate-900"
+                  />
+                </label>
+                {isPlaceholderPhoneNumber(item.phone) ? (
+                  <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                    Replace this placeholder number before opening Messages.
+                  </p>
+                ) : null}
+                {!item.phone && item.email ? <p className="mt-2 text-xs font-semibold text-slate-500">{item.email}</p> : null}
               </div>
             ))
           ) : (
@@ -628,6 +647,11 @@ function DetailDrawer({
               No phone number is saved. Use the visible template manually, then mark this facility texted.
             </p>
           ) : null}
+          {copyFeedback === "placeholder_phone" ? (
+            <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+              This contact still has a placeholder 555 number. Edit the phone number before opening Messages.
+            </p>
+          ) : null}
           {copyFeedback === "failed" ? (
             <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
               Clipboard was blocked. The message is visible above so you can copy it manually.
@@ -636,9 +660,11 @@ function DetailDrawer({
           <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
             <Clipboard size={15} /> Copy message
           </Button>
-          <Button className="mt-2 w-full" onClick={onMarkTexted}>
-            <Check size={15} /> Mark texted
-          </Button>
+          {copyFeedback !== "placeholder_phone" ? (
+            <Button className="mt-2 w-full" onClick={onMarkTexted}>
+              <Check size={15} /> Mark texted
+            </Button>
+          ) : null}
         </section>
       ) : null}
 
@@ -826,7 +852,10 @@ function TextContactPicker({
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="font-black text-slate-950">{contact.name}</p>
-                {contact.primary ? <Badge tone="blue">Recommended</Badge> : null}
+                <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                  {contact.primary ? <Badge tone="blue">Recommended</Badge> : null}
+                  {isPlaceholderPhoneNumber(contact.phone) ? <Badge tone="orange">Needs real phone</Badge> : null}
+                </span>
               </div>
               <p className="mt-1 text-sm font-semibold text-slate-600">{contact.role ?? "SLP Contact"}</p>
               <p className="mt-1 text-sm text-slate-500">{contact.phone ?? "No phone saved"}</p>
@@ -1424,6 +1453,27 @@ export default function NearMyRouteApp() {
     setReviewRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
   }
 
+  function updateContactPhone(facilityId: string, contactId: string, phone: string) {
+    const normalizedPhone = phone.trim() || undefined;
+    setFacilities((current) =>
+      current.map((facility) =>
+        facility.id === facilityId
+          ? {
+              ...facility,
+              contacts: facility.contacts.map((contact) =>
+                contact.id === contactId ? { ...contact, phone: normalizedPhone } : contact,
+              ),
+            }
+          : facility,
+      ),
+    );
+    setCopyFeedbackByFacilityId((current) => {
+      const next = { ...current };
+      delete next[facilityId];
+      return next;
+    });
+  }
+
   function parseImportSchedule() {
     setReviewRows(parseScheduleText(scheduleText, facilities));
     setExpandedImportRowIds({});
@@ -1492,6 +1542,13 @@ export default function NearMyRouteApp() {
     if (!facility || !contact?.phone) return;
 
     setTextPickerFacilityId(undefined);
+    if (isPlaceholderPhoneNumber(contact.phone)) {
+      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "placeholder_phone" }));
+      openFacilityReview(facilityId, true, activeTab);
+      return;
+    }
+
     const canOpenSms = typeof navigator !== "undefined" && canAttemptSms(navigator.userAgent);
     if (!canOpenSms) {
       setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
@@ -1708,6 +1765,7 @@ export default function NearMyRouteApp() {
               onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
               onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
               onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+              onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
               onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
               onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
               onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}
@@ -2059,6 +2117,7 @@ export default function NearMyRouteApp() {
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
             onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
             onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
             onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}
@@ -2219,6 +2278,7 @@ export default function NearMyRouteApp() {
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
             onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
             onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
             onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}

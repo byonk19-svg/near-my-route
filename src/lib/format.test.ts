@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSmsUrl, canAttemptSms, OUTREACH_MESSAGE, phoneContacts, safeMessage } from "./format";
+import { buildSmsUrl, canAttemptSms, isPlaceholderPhoneNumber, OUTREACH_MESSAGE, phoneContacts, safeMessage } from "./format";
 import { initialFacilities } from "./mockData";
 
 test("safeMessage returns the approved PHI-safe outreach template", () => {
@@ -27,6 +27,14 @@ test("buildSmsUrl normalizes phone numbers and encodes the message body", () => 
   assert.equal(url.startsWith("sms:5550144?&body="), true);
   assert.equal(url.includes("Professional%20Imaging"), true);
   assert.equal(url.includes(" "), false);
+});
+
+test("isPlaceholderPhoneNumber flags fictional 555 contact data", () => {
+  assert.equal(isPlaceholderPhoneNumber("555-0144"), true);
+  assert.equal(isPlaceholderPhoneNumber("+1 (555) 014-4"), true);
+  assert.equal(isPlaceholderPhoneNumber("713-555-0144"), true);
+  assert.equal(isPlaceholderPhoneNumber("713-867-5309"), false);
+  assert.equal(isPlaceholderPhoneNumber(undefined), false);
 });
 
 test("canAttemptSms only enables the Messages handoff for mobile user agents", () => {

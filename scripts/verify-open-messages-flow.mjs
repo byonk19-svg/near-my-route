@@ -60,9 +60,33 @@ try {
   await picker.getByText("Maria", { exact: true }).waitFor();
   await picker.getByText("Ken", { exact: true }).waitFor();
   await picker.getByText("Recommended", { exact: true }).waitFor();
+  await picker.getByText("Needs real phone", { exact: true }).first().waitFor();
   await clickVisibleButton(picker, "Ken");
 
   await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
+  await page.getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.").first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
+  const blockedState = await storedState(page);
+  assert.equal(
+    blockedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    beforeTextedCount,
+    "placeholder contacts must not log Texted today",
+  );
+
+  await page.getByLabel("Phone for Ken").first().fill("713-867-5309");
+  await waitForStoredState(
+    page,
+    (state) =>
+      state.facilities
+        .find((facility) => facility.id === "park-manor-westchase")
+        ?.contacts.find((contact) => contact.id === "c-westchase-ken")?.phone === "713-867-5309",
+    "edited phone persisted",
+  );
+  await clickVisibleButton(page, "Open Messages");
+  const updatedPicker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
+  await updatedPicker.getByText("Ken", { exact: true }).waitFor();
+  await clickVisibleButton(updatedPicker, "Ken");
+
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
     .first()

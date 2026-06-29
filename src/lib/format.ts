@@ -20,6 +20,13 @@ export function normalizePhoneForSms(phone: string) {
   return `${prefix}${trimmed.replace(/\D/g, "")}`;
 }
 
+export function isPlaceholderPhoneNumber(phone?: string) {
+  if (!phone?.trim()) return false;
+  const normalized = normalizePhoneForSms(phone).replace(/^\+/, "");
+  const nationalNumber = normalized.startsWith("1") && normalized.length > 7 ? normalized.slice(1) : normalized;
+  return nationalNumber.startsWith("555") || nationalNumber.slice(3, 6) === "555";
+}
+
 export function buildSmsUrl(phone: string, message = OUTREACH_MESSAGE) {
   return `sms:${normalizePhoneForSms(phone)}?&body=${encodeURIComponent(message)}`;
 }
