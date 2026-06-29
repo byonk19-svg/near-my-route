@@ -21,7 +21,7 @@ Open the printed local URL, usually `http://localhost:3000`.
 - Route opportunity ranking by estimated detour time
 - Google Maps directions handoff for the current route and preview routes with a selected add-on inserted
 - Facility detail drawer with contacts, notes, visit history, outreach history, and PHI-safe add-on template
-- Today Status strip, Outreach triage queue, copy-message behavior, do-not-contact state, and tentative add-to-route
+- Today Status strip, Outreach triage queue, Messages handoff, do-not-contact state, and tentative add-to-route
 - One-route dogfood checklist and notes for capturing workflow friction before routing or database work
 - LocalStorage persistence under `near-my-route-state-v1`
 
@@ -64,6 +64,8 @@ Current statuses are:
 - Do not contact (`do_not_contact`)
 
 The Outreach tab is a current-day response queue, not a history table. Cards expose the next status-aware action: not-contacted facilities get a text action, waiting facilities get response buttons, possible add-ons get an add action, added facilities get route/remove actions, and no-patients or do-not-contact facilities do not show add CTAs.
+
+Text actions start a facility-level Messages handoff. On mobile, the app copies the approved PHI-safe outreach template as a fallback, then attempts an `sms:` link with the message body prefilled. Facilities with multiple phone contacts require choosing the contact first, with the primary SLP marked recommended. On desktop, unsupported devices, or facilities without a phone number, the app copies or displays the template and requires an explicit `Mark texted` action before logging `Texted today`.
 
 Today Status is derived from today's outreach logs, facility do-not-contact state, and current route stops. `OutreachStatus` records the raw log event, while `TodayStatus` is the current-day operating state shown in the queue. The `Added` state requires a route stop with `source: "today_add_on"`; an `added_to_route` outreach log alone is treated as a possible add-on until the route stop exists.
 
