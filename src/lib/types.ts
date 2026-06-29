@@ -47,6 +47,15 @@ export type RouteStop = {
   studyCount?: number;
   notes?: string;
   status: "planned" | "confirmed" | "completed" | "tentative";
+  source?: "scheduled" | "today_add_on";
+  addedFromLogId?: string;
+  routeImpact?: {
+    addedDriveMinutes: number;
+    bestInsertionLabel: string;
+    bestInsertionAfterStopId?: string;
+    nearestStopName?: string;
+    nearestStopDistanceMiles: number;
+  };
 };
 
 export type OutreachStatus =

@@ -3,15 +3,21 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
-import type { Facility, Opportunity, RouteStop } from "@/lib/types";
+import type { Facility, Opportunity, OutreachLog, RouteStop } from "@/lib/types";
 import { routeLineFacilities } from "@/lib/routeCalculations";
-import { outreachRecencyLabel, outreachRecencyState, type OutreachRecencyState } from "@/lib/outreachRecency";
+import {
+  deriveTodayStatus,
+  todayStatusColor,
+  todayStatusLabel,
+  todayStatusOrder,
+  type TodayStatus,
+} from "@/lib/todayStatus";
 
 type RouteMapProps = {
   facilities: Facility[];
   routeStops: RouteStop[];
   opportunities: Opportunity[];
-  followUpThresholdDays: number;
+  outreachLogs: OutreachLog[];
   selectedFacilityId?: string;
   onSelectFacility: (facilityId: string) => void;
 };
@@ -73,29 +79,21 @@ function Recenter({ facility }: { facility?: Facility }) {
   return null;
 }
 
-const outreachLegend: Array<{ state: OutreachRecencyState; color: string }> = [
-  { state: "never_contacted", color: "#64748b" },
-  { state: "due_for_follow_up", color: "#eab308" },
-  { state: "contacted_recently", color: "#16a34a" },
-  { state: "contacted_today", color: "#2563eb" },
-  { state: "do_not_contact", color: "#991b1b" },
-];
+const todayLegend: Array<{ state: TodayStatus; color: string }> = todayStatusOrder.map((state) => ({
+  state,
+  color: todayStatusColor(state),
+}));
 
-function facilityColor(facility: Facility, followUpThresholdDays: number, selected?: boolean) {
+function facilityColor(status: TodayStatus, selected?: boolean) {
   if (selected) return "#111827";
-  const state = outreachRecencyState(facility, followUpThresholdDays);
-  if (state === "do_not_contact") return "#991b1b";
-  if (state === "contacted_today") return "#2563eb";
-  if (state === "contacted_recently") return "#16a34a";
-  if (state === "due_for_follow_up") return "#eab308";
-  return "#64748b";
+  return todayStatusColor(status);
 }
 
 export default function RouteMap({
   facilities,
   routeStops,
   opportunities,
-  followUpThresholdDays,
+  outreachLogs,
   selectedFacilityId,
   onSelectFacility,
 }: RouteMapProps) {
@@ -126,13 +124,15 @@ export default function RouteMap({
       {routeStops.map((stop) => {
         const facility = facilities.find((item) => item.id === stop.facilityId);
         if (!hasValidCoordinates(facility)) return null;
+        const status = deriveTodayStatus({ facility, outreachLogs, routeStops });
+        const routeColor = stop.source === "today_add_on" ? todayStatusColor("added") : "#2563eb";
 
         return (
           <TypedCircleMarker
             key={stop.id}
             center={[facility.lat, facility.lng]}
             radius={13}
-            pathOptions={{ color: "#1d4ed8", fillColor: "#2563eb", fillOpacity: 1, weight: 2 }}
+            pathOptions={{ color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }}
             eventHandlers={{ click: () => onSelectFacility(facility.id) }}
           >
             <TypedTooltip permanent direction="center" className="pin-label">
@@ -141,7 +141,9 @@ export default function RouteMap({
             <TypedPopup>
               <strong>{facility.name}</strong>
               <br />
-              Stop #{stop.order} · {stop.appointmentTime}
+              Stop #{stop.order} - {stop.appointmentTime}
+              <br />
+              {todayStatusLabel(status)}
             </TypedPopup>
           </TypedCircleMarker>
         );
@@ -151,8 +153,8 @@ export default function RouteMap({
         .map((facility) => {
           const opportunity = opportunityByFacilityId.get(facility.id);
           const selected = facility.id === selectedFacilityId;
-          const recencyState = outreachRecencyState(facility, followUpThresholdDays);
-          const color = facilityColor(facility, followUpThresholdDays, selected);
+          const status = deriveTodayStatus({ facility, outreachLogs, routeStops });
+          const color = facilityColor(status, selected);
 
           return (
             <TypedCircleMarker
@@ -169,17 +171,17 @@ export default function RouteMap({
             >
               <TypedTooltip direction="top" offset={[0, -8]}>
                 {facility.name}
-                {opportunity ? ` · +${opportunity.addedDriveMinutes} min` : ""}
-                {` · ${outreachRecencyLabel(recencyState)}`}
+                {opportunity ? ` - +${opportunity.addedDriveMinutes} min` : ""}
+                {` - ${todayStatusLabel(status)}`}
               </TypedTooltip>
               <TypedPopup>
                 <strong>{facility.name}</strong>
                 <br />
                 {opportunity
-                  ? `${opportunity.bestInsertionLabel} · +${opportunity.addedDriveMinutes} min`
+                  ? `${opportunity.bestInsertionLabel} - +${opportunity.addedDriveMinutes} min`
                   : facility.address}
                 <br />
-                {outreachRecencyLabel(recencyState)}
+                {todayStatusLabel(status)}
               </TypedPopup>
             </TypedCircleMarker>
           );
@@ -187,10 +189,10 @@ export default function RouteMap({
     </TypedMapContainer>
     <div className="pointer-events-none absolute bottom-3 left-3 z-[450] rounded-md border border-slate-200 bg-white/95 p-2 text-[11px] font-semibold text-slate-700 shadow-sm">
       <div className="grid gap-1">
-        {outreachLegend.map((item) => (
+        {todayLegend.map((item) => (
           <div key={item.state} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-            <span>{outreachRecencyLabel(item.state)}</span>
+            <span>{todayStatusLabel(item.state)}</span>
           </div>
         ))}
       </div>

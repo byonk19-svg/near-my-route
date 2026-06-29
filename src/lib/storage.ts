@@ -13,7 +13,15 @@ export function loadStoredState(): NearMyRouteState | undefined {
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as NearMyRouteState) : undefined;
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as NearMyRouteState;
+    return {
+      ...parsed,
+      routeStops: parsed.routeStops.map((stop) => ({
+        ...stop,
+        source: stop.source ?? "scheduled",
+      })),
+    };
   } catch {
     return undefined;
   }
