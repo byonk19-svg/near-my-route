@@ -1,6 +1,6 @@
 # Near My Route
 
-Route-aware MBSS facility opportunity prototype for finding same-day add-on candidates near tomorrow's route.
+Route-aware MBSS facility opportunity prototype for finding same-day add-on candidates near tomorrow's route and triaging today's facility responses.
 
 ## Run locally
 
@@ -16,12 +16,12 @@ Open the printed local URL, usually `http://localhost:3000`.
 - Next.js, TypeScript, React, Tailwind CSS
 - React Leaflet map with OpenStreetMap tiles
 - Houston-area mock facilities and tomorrow route stops
-- Facility CRM list with search and filters
-- Schedule paste/import review with facility matching
+- Daily-ops facility view with search, filters, Today Status, contacts, recency, and route fit
+- Schedule paste/import review with facility matching and mobile review cards
 - Route opportunity ranking by estimated detour time
 - Google Maps directions handoff for the current route and preview routes with a selected add-on inserted
 - Facility detail drawer with contacts, notes, visit history, outreach history, and PHI-safe add-on template
-- Outreach logging, copy-message behavior, follow-up due filters, map recency badges, do-not-contact state, and tentative add-to-route
+- Today Status strip, Outreach triage queue, copy-message behavior, do-not-contact state, and tentative add-to-route
 - LocalStorage persistence under `near-my-route-state-v1`
 
 ## Route calculation
@@ -48,23 +48,35 @@ Opportunity details can also preview a route with that facility inserted at its 
 
 Google Maps URLs are a navigation handoff only. They do not drive the app's internal opportunity ranking. Mobile browsers may support fewer waypoints than desktop Google Maps, so the app warns when a route has more than three intermediate waypoints and caps generated URL waypoints at the standard Google Maps URL limit.
 
-## Outreach cadence
+## Today Status and Outreach triage
 
-Facility pins reflect relationship recency without changing scheduled route stop styling:
+Today Status answers the morning command-center questions: who needs a text, who replied, who can be added, and what that does to the route.
 
-- Never contacted
-- Due for follow-up
-- Contacted recently
-- Texted today
-- Do not contact
+Current statuses are:
 
-The default follow-up threshold is 14 days. The threshold can be adjusted in Near My Route and Facilities filters, and the due filter includes never-contacted facilities plus facilities older than the threshold. Do-not-contact facilities keep their own state and are not treated as due.
+- Not contacted (`not_contacted`)
+- Texted today (`texted_today`)
+- Waiting (`waiting`)
+- No patients today (`no_patients_today`)
+- Possible add-on (`possible_add_on`)
+- Added (`added`)
+- Do not contact (`do_not_contact`)
+
+The Outreach tab is a current-day response queue, not a history table. Cards expose the next status-aware action: not-contacted facilities get a text action, waiting facilities get response buttons, possible add-ons get an add action, added facilities get route/remove actions, and no-patients or do-not-contact facilities do not show add CTAs.
+
+Today Status is derived from today's outreach logs, facility do-not-contact state, and current route stops. `OutreachStatus` records the raw log event, while `TodayStatus` is the current-day operating state shown in the queue. The `Added` state requires a route stop with `source: "today_add_on"`; an `added_to_route` outreach log alone is treated as a possible add-on until the route stop exists.
+
+The default follow-up threshold is 14 days. The threshold can still be adjusted in Near My Route and Facilities filters, but the main operating queue should be today's status lifecycle.
+
+## Mobile import review
+
+The Import Schedule flow is built for a phone-first review pass. Paste tomorrow's stops, parse the schedule, review each imported row as a card, correct match/action/address fields, then confirm the route. Patient names and clinical details do not belong in the pasted schedule.
 
 ## Next architecture steps
 
-- Add a routing provider abstraction before introducing any external routing API.
-- Test OSRM or another routing provider behind a feature flag, then use a reliable hosted or self-hosted service for real usage.
-- Migrate from LocalStorage to Supabase after the single-day mobile workflow is validated.
+- Dogfood one real route end to end in the current prototype.
+- After dogfood, decide whether OSRM or another routing provider is worth introducing behind a routing seam.
+- After the mobile workflow is proven, migrate from browser LocalStorage to Supabase.
 - Add row-level security before storing real user or facility data.
 
 ## Privacy note
