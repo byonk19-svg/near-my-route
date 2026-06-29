@@ -22,8 +22,17 @@ import { initialFacilities, initialOutreachLogs, initialRouteStops } from "@/lib
 import { calculateRouteOpportunities } from "@/lib/routeCalculations";
 import { applyImportRows, importRowBlockingReason, parseScheduleText } from "@/lib/scheduleImport";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
-import type { Facility, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, RouteStop } from "@/lib/types";
-import { formatDaysAgo, friendlyValue, primaryContact, safeMessage, todayIsoDate } from "@/lib/format";
+import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, RouteStop } from "@/lib/types";
+import {
+  buildSmsUrl,
+  canAttemptSms,
+  formatDaysAgo,
+  friendlyValue,
+  phoneContacts,
+  primaryContact,
+  safeMessage,
+  todayIsoDate,
+} from "@/lib/format";
 import {
   buildGoogleMapsDirectionsUrl,
   googleMapsWaypointWarning,
@@ -102,6 +111,8 @@ type OpportunitySnapshot = {
   nearestStopDistanceMiles: number;
   reasonBadges: string[];
 };
+
+type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone";
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -392,7 +403,9 @@ function DetailDrawer({
   className,
   onCloseMessage,
   onCall,
-  onMarkContacted,
+  onStartText,
+  onCopyMessage,
+  onMarkTexted,
   onLogStatus,
   onAddRoute,
   onRemoveAddOn,
@@ -408,13 +421,15 @@ function DetailDrawer({
   className?: string;
   onCloseMessage: () => void;
   onCall: () => void;
-  onMarkContacted: () => void;
+  onStartText: () => void;
+  onCopyMessage: () => void;
+  onMarkTexted: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
   onAddRoute: () => void;
   onRemoveAddOn: () => void;
   onPreviewRoute: () => void;
   onOpenRoute: () => void;
-  copyFeedback?: "copied" | "failed";
+  copyFeedback?: TextFeedback;
 }) {
   if (!facility) {
     return (
@@ -426,8 +441,7 @@ function DetailDrawer({
     );
   }
 
-  const contact = primaryContact(facility);
-  const message = safeMessage(contact?.name);
+  const message = safeMessage();
   const canAddRoute = Boolean(opportunity);
   const canContact = todayStatus !== "do_not_contact";
   const responseActions =
@@ -536,8 +550,8 @@ function DetailDrawer({
           </div>
         ) : null}
         {todayStatus === "not_contacted" ? (
-          <Button className="mt-3 w-full" tone="primary" onClick={onMarkContacted}>
-            <Check size={15} /> Copy and log text
+          <Button className="mt-3 w-full" tone="primary" onClick={onStartText}>
+            <Send size={15} /> Open Messages
           </Button>
         ) : null}
         {responseActions.length > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">{responseActions}</div> : null}
@@ -594,9 +608,24 @@ function DetailDrawer({
           <p className="mt-2 text-xs font-medium text-blue-800">
             Facility-level only. No patient names or clinical details.
           </p>
+          {copyFeedback === "opened" ? (
+            <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
+              Template copied. Messages opened and this facility is logged as texted today.
+            </p>
+          ) : null}
           {copyFeedback === "copied" ? (
             <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
-              Copied and logged as texted today.
+              Template copied.
+            </p>
+          ) : null}
+          {copyFeedback === "fallback_copied" ? (
+            <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+              Template copied. Open Messages on your phone, then mark this facility texted.
+            </p>
+          ) : null}
+          {copyFeedback === "no_phone" ? (
+            <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+              No phone number is saved. Use the visible template manually, then mark this facility texted.
             </p>
           ) : null}
           {copyFeedback === "failed" ? (
@@ -604,8 +633,11 @@ function DetailDrawer({
               Clipboard was blocked. The message is visible above so you can copy it manually.
             </p>
           ) : null}
-          <Button tone="primary" className="mt-3 w-full" onClick={onMarkContacted}>
+          <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
             <Clipboard size={15} /> Copy message
+          </Button>
+          <Button className="mt-2 w-full" onClick={onMarkTexted}>
+            <Check size={15} /> Mark texted
           </Button>
         </section>
       ) : null}
@@ -756,6 +788,53 @@ function OutreachQueueCard({
         </p>
       ) : null}
     </article>
+  );
+}
+
+function TextContactPicker({
+  facility,
+  contacts,
+  onChoose,
+  onClose,
+}: {
+  facility?: Facility;
+  contacts: FacilityContact[];
+  onChoose: (contactId: string) => void;
+  onClose: () => void;
+}) {
+  if (!facility) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid items-end bg-slate-950/40 p-3 sm:items-center">
+      <section className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Choose text contact</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">{facility.name}</h2>
+          </div>
+          <Button tone="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {contacts.map((contact) => (
+            <button
+              key={contact.id}
+              type="button"
+              onClick={() => onChoose(contact.id)}
+              className="rounded-lg border border-slate-200 p-3 text-left transition hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-black text-slate-950">{contact.name}</p>
+                {contact.primary ? <Badge tone="blue">Recommended</Badge> : null}
+              </div>
+              <p className="mt-1 text-sm font-semibold text-slate-600">{contact.role ?? "SLP Contact"}</p>
+              <p className="mt-1 text-sm text-slate-500">{contact.phone ?? "No phone saved"}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1102,7 +1181,9 @@ export default function NearMyRouteApp() {
   const [dogfoodChecked, setDogfoodChecked] = useState<Record<string, boolean>>({});
   const [dogfoodNotes, setDogfoodNotes] = useState("");
   const [showMessage, setShowMessage] = useState(false);
-  const [copyFeedbackByFacilityId, setCopyFeedbackByFacilityId] = useState<Record<string, "copied" | "failed">>({});
+  const [copyFeedbackByFacilityId, setCopyFeedbackByFacilityId] = useState<Record<string, TextFeedback>>({});
+  const [textPickerFacilityId, setTextPickerFacilityId] = useState<string>();
+  const [pendingTextContactByFacilityId, setPendingTextContactByFacilityId] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(false);
   const idCounterRef = useRef(0);
 
@@ -1174,6 +1255,8 @@ export default function NearMyRouteApp() {
   const selectedTodayStatus = selectedFacility
     ? todayStatusByFacilityId.get(selectedFacility.id)
     : undefined;
+  const textPickerFacility = textPickerFacilityId ? facilities.find((facility) => facility.id === textPickerFacilityId) : undefined;
+  const textPickerContacts = textPickerFacility ? phoneContacts(textPickerFacility) : [];
   const todayQueue = facilities
     .map((facility) => {
       const opportunity =
@@ -1227,6 +1310,7 @@ export default function NearMyRouteApp() {
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);
     setShowMessage(false);
+    setTextPickerFacilityId(undefined);
     setCopyFeedbackByFacilityId((current) => {
       const next = { ...current };
       delete next[facilityId];
@@ -1237,6 +1321,7 @@ export default function NearMyRouteApp() {
   function selectTopLevelTab(tab: AppTab) {
     setActiveTab(tab);
     setShowMessage(false);
+    setTextPickerFacilityId(undefined);
     if (tab !== "Near My Route") {
       setRouteView({ kind: "home" });
     }
@@ -1246,6 +1331,7 @@ export default function NearMyRouteApp() {
     setActiveTab("Near My Route");
     setSelectedFacilityId(facilityId);
     setShowMessage(false);
+    setTextPickerFacilityId(undefined);
     setRouteView({ kind: "home" });
   }
 
@@ -1253,6 +1339,7 @@ export default function NearMyRouteApp() {
     setActiveTab("Near My Route");
     setSelectedFacilityId(facilityId);
     setShowMessage(showTemplate);
+    setTextPickerFacilityId(undefined);
     setRouteView({ kind: "review", facilityId, sourceTab });
   }
 
@@ -1286,7 +1373,13 @@ export default function NearMyRouteApp() {
     };
   }
 
-  function logOutreach(facilityId: string, status: OutreachStatus, method: OutreachLog["method"], notes?: string) {
+  function logOutreach(
+    facilityId: string,
+    status: OutreachStatus,
+    method: OutreachLog["method"],
+    notes?: string,
+    contactNameOverride?: string,
+  ) {
     const facility = facilities.find((item) => item.id === facilityId);
     const contact = facility ? primaryContact(facility) : undefined;
     const now = new Date().toISOString();
@@ -1295,7 +1388,7 @@ export default function NearMyRouteApp() {
       facilityId,
       createdAt: now,
       method,
-      contactName: contact?.name,
+      contactName: contactNameOverride ?? contact?.name,
       status,
       notes,
     };
@@ -1348,18 +1441,17 @@ export default function NearMyRouteApp() {
     openRouteHome(result.routeStops[0]?.facilityId ?? selectedFacilityId);
   }
 
-  async function copySafeMessage(facilityId: string) {
+  async function copySafeMessage(facilityId: string, feedback: TextFeedback = "copied") {
     const facility = facilities.find((item) => item.id === facilityId);
-    const contact = facility ? primaryContact(facility) : undefined;
-    if (!facility || !navigator.clipboard) {
+    if (!facility || typeof navigator === "undefined" || !navigator.clipboard) {
       setShowMessage(true);
       setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "failed" }));
       return false;
     }
 
     try {
-      await navigator.clipboard.writeText(safeMessage(contact?.name));
-      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "copied" }));
+      await navigator.clipboard.writeText(safeMessage());
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: feedback }));
       return true;
     } catch {
       setShowMessage(true);
@@ -1368,10 +1460,64 @@ export default function NearMyRouteApp() {
     }
   }
 
-  async function markTexted(facilityId: string) {
-    const copied = await copySafeMessage(facilityId);
-    if (!copied) return;
-    logOutreach(facilityId, "texted", "text", "Copied safe add-on request template.");
+  async function startTextFlow(facilityId: string) {
+    const facility = facilities.find((item) => item.id === facilityId);
+    if (!facility) return;
+
+    setSelectedFacilityId(facilityId);
+    const contacts = phoneContacts(facility);
+    if (contacts.length === 0) {
+      setPendingTextContactByFacilityId((current) => {
+        const next = { ...current };
+        delete next[facilityId];
+        return next;
+      });
+      await copySafeMessage(facilityId, "no_phone");
+      openFacilityReview(facilityId, true, activeTab);
+      return;
+    }
+
+    if (contacts.length > 1) {
+      setShowMessage(false);
+      setTextPickerFacilityId(facilityId);
+      return;
+    }
+
+    await openMessagesForContact(facilityId, contacts[0].id);
+  }
+
+  async function openMessagesForContact(facilityId: string, contactId: string) {
+    const facility = facilities.find((item) => item.id === facilityId);
+    const contact = facility?.contacts.find((item) => item.id === contactId);
+    if (!facility || !contact?.phone) return;
+
+    setTextPickerFacilityId(undefined);
+    const canOpenSms = typeof navigator !== "undefined" && canAttemptSms(navigator.userAgent);
+    if (!canOpenSms) {
+      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
+      await copySafeMessage(facilityId, "fallback_copied");
+      openFacilityReview(facilityId, true, activeTab);
+      return;
+    }
+
+    await copySafeMessage(facilityId, "opened");
+    logOutreach(facilityId, "texted", "text", `Opened Messages to ${contact.name}. Template copied as fallback.`, contact.name);
+    window.location.href = buildSmsUrl(contact.phone, safeMessage());
+  }
+
+  function markTexted(facilityId: string) {
+    const facility = facilities.find((item) => item.id === facilityId);
+    if (!facility) return;
+    const pendingContactId = pendingTextContactByFacilityId[facilityId];
+    const contact = facility.contacts.find((item) => item.id === pendingContactId) ?? primaryContact(facility);
+    logOutreach(facilityId, "texted", "text", "Manually marked texted after Messages fallback.", contact?.name);
+    setShowMessage(false);
+    setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "copied" }));
+    setPendingTextContactByFacilityId((current) => {
+      const next = { ...current };
+      delete next[facilityId];
+      return next;
+    });
   }
 
   function openMapsUrl(url?: string) {
@@ -1559,7 +1705,9 @@ export default function NearMyRouteApp() {
               showMessage={showMessage}
               onCloseMessage={() => setShowMessage(false)}
               onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
-              onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
+              onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
+              onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
+              onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
               onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
               onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
               onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}
@@ -1841,7 +1989,7 @@ export default function NearMyRouteApp() {
                             todayStatus={todayStatusByFacilityId.get(opportunity.facility.id) ?? "not_contacted"}
                             onSelect={() => selectFacility(opportunity.facility.id)}
                             onReview={() => openFacilityReview(opportunity.facility.id)}
-                            onMarkContacted={() => logOutreach(opportunity.facility.id, "texted", "text", "Marked contacted from opportunity card.")}
+                            onMarkContacted={() => void startTextFlow(opportunity.facility.id)}
                             onAddTentatively={() => addTentatively(opportunity.facility.id)}
                             onPreviewRoute={() => previewRouteWithAddOn(opportunity)}
                           />
@@ -1876,7 +2024,7 @@ export default function NearMyRouteApp() {
                           todayStatus={todayStatusByFacilityId.get(opportunity.facility.id) ?? "not_contacted"}
                           onSelect={() => selectFacility(opportunity.facility.id)}
                           onReview={() => openFacilityReview(opportunity.facility.id)}
-                          onMarkContacted={() => logOutreach(opportunity.facility.id, "texted", "text", "Marked contacted from opportunity card.")}
+                          onMarkContacted={() => void startTextFlow(opportunity.facility.id)}
                           onAddTentatively={() => addTentatively(opportunity.facility.id)}
                           onPreviewRoute={() => previewRouteWithAddOn(opportunity)}
                         />
@@ -1908,7 +2056,9 @@ export default function NearMyRouteApp() {
             showMessage={showMessage}
             onCloseMessage={() => setShowMessage(false)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
-            onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
+            onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
+            onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
             onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}
@@ -2066,7 +2216,9 @@ export default function NearMyRouteApp() {
             showMessage={showMessage}
             onCloseMessage={() => setShowMessage(false)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged from Facilities view.")}
-            onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
+            onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
+            onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
             onRemoveAddOn={() => selectedFacility && removeTodayAddOn(selectedFacility.id)}
@@ -2296,8 +2448,7 @@ export default function NearMyRouteApp() {
                   latestLog={latestLog}
                   onReview={() => openFacilityReview(facility.id, false, "Outreach")}
                   onTemplate={() => {
-                    setSelectedFacilityId(facility.id);
-                    void markTexted(facility.id);
+                    void startTextFlow(facility.id);
                   }}
                   onLogStatus={(nextStatus, notes) => logTodayResponse(facility.id, nextStatus, notes)}
                   onAddRoute={() => addTentatively(facility.id)}
@@ -2381,6 +2532,13 @@ export default function NearMyRouteApp() {
           </section>
         </main>
       ) : null}
+
+      <TextContactPicker
+        facility={textPickerFacility}
+        contacts={textPickerContacts}
+        onChoose={(contactId) => textPickerFacility && void openMessagesForContact(textPickerFacility.id, contactId)}
+        onClose={() => setTextPickerFacilityId(undefined)}
+      />
     </div>
   );
 }

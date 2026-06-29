@@ -7,6 +7,7 @@
     "build": "next build",
     "test": "tsx --test src/**/*.test.ts",
     "test:e2e:import": "node scripts/verify-import-guardrails.mjs",
+    "test:e2e:messages": "node scripts/verify-open-messages-flow.mjs",
     "start": "next start",
     "lint": "eslint"
   },
