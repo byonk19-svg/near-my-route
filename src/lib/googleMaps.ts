@@ -3,6 +3,7 @@ import type { Facility, RouteStop } from "./types";
 const GOOGLE_MAPS_DIRECTIONS_URL = "https://www.google.com/maps/dir/";
 const MOBILE_WAYPOINT_LIMIT = 3;
 const STANDARD_WAYPOINT_LIMIT = 9;
+const SPLIT_LEG_STOP_LIMIT = MOBILE_WAYPOINT_LIMIT + 2;
 
 function hasValidCoordinates(facility: Facility) {
   return (
@@ -50,6 +51,22 @@ export function buildGoogleMapsDirectionsUrl(routeFacilities: Facility[]) {
   }
 
   return `${GOOGLE_MAPS_DIRECTIONS_URL}?${params.toString()}`;
+}
+
+export function splitGoogleMapsDirectionsUrls(routeFacilities: Facility[]) {
+  if (routeFacilities.length <= SPLIT_LEG_STOP_LIMIT) return [];
+
+  const legs: string[] = [];
+  let startIndex = 0;
+
+  while (startIndex < routeFacilities.length - 1) {
+    const endIndex = Math.min(startIndex + SPLIT_LEG_STOP_LIMIT - 1, routeFacilities.length - 1);
+    const legUrl = buildGoogleMapsDirectionsUrl(routeFacilities.slice(startIndex, endIndex + 1));
+    if (legUrl) legs.push(legUrl);
+    startIndex = endIndex;
+  }
+
+  return legs;
 }
 
 export function orderedRouteFacilities(routeStops: RouteStop[], facilities: Facility[]) {

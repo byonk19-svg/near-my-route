@@ -47,7 +47,7 @@ The app can open the ordered route in Google Maps using a directions URL with:
 
 Opportunity details can also preview a route with that facility inserted at its best estimated insertion point without permanently changing the route.
 
-Google Maps URLs are a navigation handoff only. They do not drive the app's internal opportunity ranking. Mobile browsers may support fewer waypoints than desktop Google Maps, so the app warns when a route has more than three intermediate waypoints and caps generated URL waypoints at the standard Google Maps URL limit.
+Google Maps URLs are a navigation handoff only. They do not drive the app's internal opportunity ranking. Mobile browsers may support fewer waypoints than desktop Google Maps, so the current-route panel warns when a route has more than three intermediate waypoints, offers split-leg buttons for longer saved routes, and caps generated URL waypoints at the standard Google Maps URL limit.
 
 ## Today Status and Outreach triage
 

@@ -52,6 +52,7 @@ textarea {
   color: white;
   font-size: 13px;
   font-weight: 900;
+  pointer-events: none;
 }
 
 .leaflet-tooltip.pin-label::before {

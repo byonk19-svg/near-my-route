@@ -145,6 +145,14 @@ export default function RouteMap({
               Stop #{stop.order} - {stop.appointmentTime}
               <br />
               {todayStatusLabel(status)}
+              <br />
+              <button
+                type="button"
+                onClick={() => onSelectFacility(facility.id)}
+                className="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"
+              >
+                Review
+              </button>
             </TypedPopup>
           </TypedCircleMarker>
         );
@@ -183,6 +191,14 @@ export default function RouteMap({
                   : facility.address}
                 <br />
                 {todayStatusLabel(status)}
+                <br />
+                <button
+                  type="button"
+                  onClick={() => onSelectFacility(facility.id)}
+                  className="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"
+                >
+                  Review
+                </button>
               </TypedPopup>
             </TypedCircleMarker>
           );
@@ -197,6 +213,26 @@ export default function RouteMap({
           </div>
         ))}
       </div>
+    </div>
+    <div className="absolute right-3 top-3 z-[450] grid max-w-[190px] gap-1 rounded-md border border-slate-200 bg-white/95 p-2 text-xs font-semibold text-slate-700 shadow-sm lg:hidden">
+      <p className="text-[10px] font-black uppercase text-slate-500">Review stop</p>
+      {[...routeStops]
+        .sort((a, b) => a.order - b.order)
+        .map((stop) => {
+          const facility = facilities.find((item) => item.id === stop.facilityId);
+          if (!facility) return null;
+
+          return (
+            <button
+              key={stop.id}
+              type="button"
+              onClick={() => onSelectFacility(facility.id)}
+              className="truncate rounded border border-slate-200 bg-white px-2 py-1 text-left hover:border-blue-200 hover:bg-blue-50"
+            >
+              {stop.order}. {facility.name}
+            </button>
+          );
+        })}
     </div>
     </div>
   );
