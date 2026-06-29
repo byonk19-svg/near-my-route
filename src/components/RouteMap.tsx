@@ -45,12 +45,26 @@ const TypedTooltip = Tooltip as unknown as (props: {
 }) => ReactNode;
 const TypedPopup = Popup as unknown as (props: { children: ReactNode }) => ReactNode;
 
+function hasValidCoordinates(facility?: Facility): facility is Facility {
+  return Boolean(
+    facility &&
+      Number.isFinite(facility.lat) &&
+      Number.isFinite(facility.lng) &&
+      Math.abs(facility.lat) <= 90 &&
+      Math.abs(facility.lng) <= 180,
+  );
+}
+
 function Recenter({ facility }: { facility?: Facility }) {
   const map = useMap();
 
   useEffect(() => {
-    if (facility) {
-      map.flyTo([facility.lat, facility.lng], 13, { duration: 0.5 });
+    if (hasValidCoordinates(facility)) {
+      try {
+        map.flyTo([facility.lat, facility.lng], 13, { duration: 0.5 });
+      } catch {
+        // Imported or persisted facilities can be incomplete; route workflow should keep running.
+      }
     }
   }, [facility, map]);
 
@@ -72,7 +86,7 @@ export default function RouteMap({
   selectedFacilityId,
   onSelectFacility,
 }: RouteMapProps) {
-  const routeFacilities = routeLineFacilities(routeStops, facilities);
+  const routeFacilities = routeLineFacilities(routeStops, facilities).filter(hasValidCoordinates);
   const routeFacilityIds = new Set(routeStops.map((stop) => stop.facilityId));
   const opportunityByFacilityId = new Map(
     opportunities.map((opportunity) => [opportunity.facility.id, opportunity]),
@@ -97,7 +111,7 @@ export default function RouteMap({
       ) : null}
       {routeStops.map((stop) => {
         const facility = facilities.find((item) => item.id === stop.facilityId);
-        if (!facility) return null;
+        if (!hasValidCoordinates(facility)) return null;
 
         return (
           <TypedCircleMarker
@@ -119,7 +133,7 @@ export default function RouteMap({
         );
       })}
       {facilities
-        .filter((facility) => !routeFacilityIds.has(facility.id))
+        .filter((facility) => hasValidCoordinates(facility) && !routeFacilityIds.has(facility.id))
         .map((facility) => {
           const opportunity = opportunityByFacilityId.get(facility.id);
           const selected = facility.id === selectedFacilityId;

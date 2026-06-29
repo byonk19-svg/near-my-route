@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Ban,
+  ArrowLeft,
   Check,
   Clipboard,
   Filter,
@@ -46,8 +46,31 @@ const outreachStatuses: OutreachStatus[] = [
   "possible_add_on",
   "added_to_route",
   "follow_up_later",
-  "do_not_contact",
 ];
+
+type AppTab = "Near My Route" | "Facilities" | "Import Schedule" | "Outreach";
+
+type RouteView =
+  | { kind: "home" }
+  | { kind: "review"; facilityId: string; sourceTab: AppTab }
+  | {
+      kind: "confirmation";
+      facilityId: string;
+      routeStopId: string;
+      snapshot: OpportunitySnapshot;
+      contactedToday: boolean;
+      canRemove: boolean;
+    };
+
+type OpportunitySnapshot = {
+  facilityId: string;
+  addedDriveMinutes: number;
+  bestInsertionLabel: string;
+  bestInsertionAfterStopId?: string;
+  nearestStopName?: string;
+  nearestStopDistanceMiles: number;
+  reasonBadges: string[];
+};
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -71,7 +94,7 @@ function Button({
       type={type}
       onClick={onClick}
       className={cx(
-        "inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1",
+        "inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 py-2 text-center text-[13px] font-semibold leading-tight transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1",
         tone === "primary" && "bg-blue-600 text-white hover:bg-blue-700",
         tone === "secondary" && "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
         tone === "ghost" && "text-slate-600 hover:bg-slate-100",
@@ -125,16 +148,18 @@ function Toggle({
 
 function OpportunityCard({
   opportunity,
+  rank,
   selected,
   onSelect,
-  onAsk,
+  onReview,
   onMarkContacted,
   onAddTentatively,
 }: {
   opportunity: Opportunity;
+  rank: number;
   selected: boolean;
   onSelect: () => void;
-  onAsk: () => void;
+  onReview: () => void;
   onMarkContacted: () => void;
   onAddTentatively: () => void;
 }) {
@@ -150,9 +175,14 @@ function OpportunityCard({
     >
       <button type="button" onClick={onSelect} className="block w-full text-left">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-950">{opportunity.facility.name}</h3>
-            <p className="mt-1 text-xl font-black tracking-tight text-orange-600">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-600 text-[11px] font-black text-white">
+                {rank}
+              </span>
+              <h3 className="truncate text-sm font-bold text-slate-950">{opportunity.facility.name}</h3>
+            </div>
+            <p className="mt-2 text-2xl font-black tracking-tight text-orange-600">
               +{opportunity.addedDriveMinutes} min off route
             </p>
           </div>
@@ -177,8 +207,8 @@ function OpportunityCard({
         </div>
       </button>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button tone="primary" onClick={onAsk}>
-          <MessageSquareText size={15} /> Ask for Add-ons
+        <Button tone="primary" onClick={onReview}>
+          <MessageSquareText size={15} /> Review fit
         </Button>
         <Button onClick={onMarkContacted}>
           <Check size={15} /> Mark Contacted
@@ -187,10 +217,68 @@ function OpportunityCard({
           <Plus size={15} /> Add Tentatively
         </Button>
         <Button onClick={onSelect}>
-          <MapPinned size={15} /> Details
+          <MapPinned size={15} /> Preview Map
         </Button>
       </div>
     </article>
+  );
+}
+
+function BestAddOnCard({
+  opportunity,
+  onReview,
+  onPreview,
+  onImport,
+}: {
+  opportunity?: Opportunity;
+  onReview: () => void;
+  onPreview: () => void;
+  onImport: () => void;
+}) {
+  if (!opportunity) {
+    return (
+      <section className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Best add-on now</p>
+        <h2 className="mt-2 text-lg font-black text-slate-950">No route add-ons match these filters</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Adjust the detour or contact filters, or import tomorrow&apos;s schedule before reviewing candidates.
+        </p>
+        <Button className="mt-3 w-full" onClick={onImport}>
+          <Clipboard size={15} /> Import Schedule
+        </Button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Best add-on now</p>
+          <h2 className="mt-1 truncate text-xl font-black text-slate-950">{opportunity.facility.name}</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-600">{opportunity.bestInsertionLabel}</p>
+        </div>
+        <div className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-right">
+          <p className="text-2xl font-black leading-none text-orange-600">+{opportunity.addedDriveMinutes}</p>
+          <p className="mt-1 text-[11px] font-bold uppercase text-orange-700">min detour</p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {opportunity.reasonBadges.slice(0, 3).map((badge) => (
+          <Badge key={badge} tone="green">
+            {badge}
+          </Badge>
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button tone="primary" onClick={onReview}>
+          <MessageSquareText size={15} /> Review fit
+        </Button>
+        <Button onClick={onPreview}>
+          <MapPinned size={15} /> Preview map
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -199,27 +287,27 @@ function DetailDrawer({
   opportunity,
   outreachLogs,
   showMessage,
+  className,
   onCloseMessage,
   onAsk,
   onCall,
   onMarkContacted,
   onAddRoute,
-  onDoNotContact,
 }: {
   facility?: Facility;
   opportunity?: Opportunity;
   outreachLogs: OutreachLog[];
   showMessage: boolean;
+  className?: string;
   onCloseMessage: () => void;
   onAsk: () => void;
   onCall: () => void;
   onMarkContacted: () => void;
   onAddRoute: () => void;
-  onDoNotContact: () => void;
 }) {
   if (!facility) {
     return (
-      <aside className="hidden w-[360px] shrink-0 border-l border-slate-200 bg-white p-4 xl:block">
+      <aside className={cx("hidden w-[360px] shrink-0 border-l border-slate-200 bg-white p-4 xl:block", className)}>
         <div className="grid h-full place-items-center rounded-lg border border-dashed border-slate-200 text-center text-sm text-slate-500">
           Select a facility to view contacts, notes, and route fit.
         </div>
@@ -231,7 +319,7 @@ function DetailDrawer({
   const message = safeMessage(contact?.name);
 
   return (
-    <aside className="w-full shrink-0 border-t border-slate-200 bg-white p-4 xl:w-[380px] xl:border-l xl:border-t-0">
+    <aside className={cx("w-full shrink-0 border-t border-slate-200 bg-white p-4 xl:w-[380px] xl:border-l xl:border-t-0", className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-slate-950">{facility.name}</h2>
@@ -344,24 +432,111 @@ function DetailDrawer({
         </div>
       </section>
 
-      <div className="mt-5 grid grid-cols-2 gap-2">
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <Button tone="primary" onClick={onMarkContacted}>
+          <Check size={15} /> Mark Contacted
+        </Button>
         <Button tone="primary" onClick={onAsk}>
           <Send size={15} /> Ask for Add-ons
         </Button>
         <Button onClick={onCall}>
           <Phone size={15} /> Call
         </Button>
-        <Button onClick={onMarkContacted}>
-          <Check size={15} /> Mark Contacted
-        </Button>
-        <Button onClick={onAddRoute}>
-          <Plus size={15} /> Add to Route
-        </Button>
-        <Button tone="danger" className="col-span-2" onClick={onDoNotContact}>
-          <Ban size={15} /> Do Not Contact
-        </Button>
+        {opportunity ? (
+          <Button onClick={onAddRoute}>
+            <Plus size={15} /> Add Tentatively
+          </Button>
+        ) : null}
       </div>
     </aside>
+  );
+}
+
+function TentativeAddConfirmation({
+  facility,
+  routeStops,
+  facilityById,
+  snapshot,
+  contactedToday,
+  canRemove,
+  onBackToRoute,
+  onRemoveTentative,
+}: {
+  facility?: Facility;
+  routeStops: Array<{ id: string; facilityId: string; order: number; appointmentTime?: string; status: string }>;
+  facilityById: Map<string, Facility>;
+  snapshot: OpportunitySnapshot;
+  contactedToday: boolean;
+  canRemove: boolean;
+  onBackToRoute: () => void;
+  onRemoveTentative: () => void;
+}) {
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-4 xl:hidden">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-green-700">Tentative add-on</p>
+          <h2 className="mt-1 text-xl font-black text-green-950">Added tentatively</h2>
+          <p className="mt-1 text-sm leading-6 text-green-900">You can adjust before starting tomorrow&apos;s route.</p>
+        </div>
+
+        <div className="mt-4">
+          <h3 className="text-sm font-black text-slate-950">Updated route order</h3>
+          <div className="mt-3 space-y-2">
+            {routeStops.map((stop) => {
+              const stopFacility = facilityById.get(stop.facilityId);
+              const isInserted = stop.facilityId === snapshot.facilityId;
+              return (
+                <div
+                  key={stop.id}
+                  className={cx(
+                    "flex items-center gap-3 rounded-lg border p-3",
+                    isInserted ? "border-green-200 bg-green-50" : "border-slate-200 bg-slate-50",
+                  )}
+                >
+                  <span
+                    className={cx(
+                      "grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-black text-white",
+                      isInserted ? "bg-green-600" : "bg-blue-600",
+                    )}
+                  >
+                    {stop.order}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-slate-950">
+                      {stopFacility?.name ?? "Unknown facility"}
+                    </span>
+                    <span className="text-xs font-medium text-slate-500">
+                      {isInserted
+                        ? `${snapshot.bestInsertionLabel} · +${snapshot.addedDriveMinutes} min detour`
+                        : `${stop.appointmentTime ?? "Time TBD"} · ${friendlyValue(stop.status)}`}
+                    </span>
+                  </span>
+                  {isInserted ? <Badge tone="green">Tentative</Badge> : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Outreach log</p>
+          <p className="mt-1 text-sm font-bold text-slate-950">
+            {contactedToday ? "Contacted today" : "Tentative route add logged"}
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            {facility?.name ?? "This facility"} is on tomorrow&apos;s route as a tentative add-on.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <Button tone="primary" onClick={onBackToRoute}>
+            <ArrowLeft size={15} /> Back to route
+          </Button>
+          {canRemove ? <Button onClick={onRemoveTentative}>Remove tentative stop</Button> : null}
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -369,7 +544,8 @@ export default function NearMyRouteApp() {
   const [facilities, setFacilities] = useState(initialFacilities);
   const [routeStops, setRouteStops] = useState(initialRouteStops);
   const [outreachLogs, setOutreachLogs] = useState(initialOutreachLogs);
-  const [activeTab, setActiveTab] = useState("Near My Route");
+  const [activeTab, setActiveTab] = useState<AppTab>("Near My Route");
+  const [routeView, setRouteView] = useState<RouteView>({ kind: "home" });
   const [selectedFacilityId, setSelectedFacilityId] = useState("encompass-westchase");
   const [maxDetourMinutes, setMaxDetourMinutes] = useState(10);
   const [notContactedRecentlyOnly, setNotContactedRecentlyOnly] = useState(false);
@@ -388,7 +564,7 @@ export default function NearMyRouteApp() {
 
   function nextId(prefix: string) {
     idCounterRef.current += 1;
-    return `${prefix}-${idCounterRef.current}`;
+    return `${prefix}-${Date.now()}-${idCounterRef.current}`;
   }
 
   useEffect(() => {
@@ -409,6 +585,10 @@ export default function NearMyRouteApp() {
     if (hydrated) saveStoredState({ facilities, routeStops, outreachLogs });
   }, [facilities, routeStops, outreachLogs, hydrated]);
 
+  useEffect(() => {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }, [activeTab, routeView.kind]);
+
   const opportunities = useMemo(
     () =>
       calculateRouteOpportunities(routeStops, facilities, {
@@ -421,17 +601,88 @@ export default function NearMyRouteApp() {
     [facilities, knownContactsOnly, maxDetourMinutes, notContactedRecentlyOnly, routeStops, sameDayFriendlyOnly],
   );
 
+  const routeFitOpportunities = useMemo(
+    () =>
+      calculateRouteOpportunities(routeStops, facilities, {
+        maxDetourMinutes: 999,
+        averageSpeedMph: 28,
+      }),
+    [facilities, routeStops],
+  );
+
   const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId);
-  const selectedOpportunity = opportunities.find((item) => item.facility.id === selectedFacilityId);
+  const selectedOpportunity =
+    opportunities.find((item) => item.facility.id === selectedFacilityId) ??
+    routeFitOpportunities.find((item) => item.facility.id === selectedFacilityId);
   const selectedOutreachLogs = outreachLogs
     .filter((log) => log.facilityId === selectedFacilityId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const orderedRouteStops = [...routeStops].sort((a, b) => a.order - b.order);
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
+  const detourRankByFacilityId = new Map(
+    [...opportunities]
+      .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)
+      .map((opportunity, index) => [opportunity.facility.id, index + 1]),
+  );
+  const featuredOpportunity = [...opportunities]
+    .filter((opportunity) => opportunity.group !== "Not Worth It Today")
+    .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)[0];
 
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);
     setShowMessage(false);
+  }
+
+  function selectTopLevelTab(tab: AppTab) {
+    setActiveTab(tab);
+    setShowMessage(false);
+    if (tab !== "Near My Route") {
+      setRouteView({ kind: "home" });
+    }
+  }
+
+  function openRouteHome(facilityId = selectedFacilityId) {
+    setActiveTab("Near My Route");
+    setSelectedFacilityId(facilityId);
+    setShowMessage(false);
+    setRouteView({ kind: "home" });
+  }
+
+  function openFacilityReview(facilityId: string, showTemplate = false, sourceTab: AppTab = activeTab) {
+    setActiveTab("Near My Route");
+    setSelectedFacilityId(facilityId);
+    setShowMessage(showTemplate);
+    setRouteView({ kind: "review", facilityId, sourceTab });
+  }
+
+  function closeFacilityReview(view: Extract<RouteView, { kind: "review" }>) {
+    setSelectedFacilityId(view.facilityId);
+    if (view.sourceTab === "Near My Route") {
+      openRouteHome(view.facilityId);
+    } else {
+      selectTopLevelTab(view.sourceTab);
+    }
+  }
+
+  function reviewBackLabel(view: Extract<RouteView, { kind: "review" }>) {
+    if (view.sourceTab === "Near My Route") return "Back to route";
+    if (view.sourceTab === "Import Schedule") return "Back to import";
+    return `Back to ${view.sourceTab}`;
+  }
+
+  function snapshotOpportunity(facilityId: string): OpportunitySnapshot {
+    const opportunity =
+      opportunities.find((item) => item.facility.id === facilityId) ??
+      routeFitOpportunities.find((item) => item.facility.id === facilityId);
+    return {
+      facilityId,
+      addedDriveMinutes: opportunity?.addedDriveMinutes ?? 0,
+      bestInsertionLabel: opportunity?.bestInsertionLabel ?? "Already on tomorrow's route",
+      bestInsertionAfterStopId: opportunity?.bestInsertionAfterStopId,
+      nearestStopName: opportunity?.nearestStopName,
+      nearestStopDistanceMiles: opportunity?.nearestStopDistanceMiles ?? 0,
+      reasonBadges: opportunity?.reasonBadges ?? [],
+    };
   }
 
   function logOutreach(facilityId: string, status: OutreachStatus, method: OutreachLog["method"], notes?: string) {
@@ -449,6 +700,8 @@ export default function NearMyRouteApp() {
     };
 
     setOutreachLogs((current) => [log, ...current]);
+    if (status === "added_to_route") return;
+
     setFacilities((current) =>
       current.map((item) =>
         item.id === facilityId
@@ -473,14 +726,34 @@ export default function NearMyRouteApp() {
   }
 
   function addTentatively(facilityId: string) {
-    if (routeStops.some((stop) => stop.facilityId === facilityId)) return;
-    const afterStopId = opportunities.find((item) => item.facility.id === facilityId)?.bestInsertionAfterStopId;
+    const existingStop = routeStops.find((stop) => stop.facilityId === facilityId);
+    const snapshot = snapshotOpportunity(facilityId);
+    if (existingStop) {
+      setSelectedFacilityId(facilityId);
+      if (existingStop.status !== "tentative") {
+        setRouteView({ kind: "home" });
+        return;
+      }
+      setRouteView({
+        kind: "confirmation",
+        facilityId,
+        routeStopId: existingStop.id,
+        snapshot,
+        contactedToday: outreachLogs.some(
+          (log) => log.facilityId === facilityId && log.createdAt.slice(0, 10) === todayIsoDate(),
+        ),
+        canRemove: true,
+      });
+      return;
+    }
+    const afterStopId = snapshot.bestInsertionAfterStopId;
     const afterStop = routeStops.find((stop) => stop.id === afterStopId);
     const order = afterStop ? afterStop.order + 0.5 : routeStops.length + 1;
+    const routeStopId = nextId("stop");
     const nextStops = [
       ...routeStops,
       {
-        id: nextId("stop"),
+        id: routeStopId,
         facilityId,
         order,
         status: "tentative" as const,
@@ -491,15 +764,20 @@ export default function NearMyRouteApp() {
       .map((stop, index) => ({ ...stop, order: index + 1 }));
     setRouteStops(nextStops);
     logOutreach(facilityId, "added_to_route", "other", "Added tentatively to tomorrow's route.");
+    setActiveTab("Near My Route");
+    setSelectedFacilityId(facilityId);
+    setShowMessage(false);
+    setRouteView({ kind: "confirmation", facilityId, routeStopId, snapshot, contactedToday: false, canRemove: true });
   }
 
-  function doNotContact(facilityId: string) {
-    setFacilities((current) =>
-      current.map((facility) =>
-        facility.id === facilityId ? { ...facility, doNotContact: true, lastContacted: todayIsoDate() } : facility,
-      ),
+  function removeTentativeStop(routeStopId: string) {
+    setRouteStops((current) =>
+      current
+        .filter((stop) => stop.id !== routeStopId || stop.status !== "tentative")
+        .sort((a, b) => a.order - b.order)
+        .map((stop, index) => ({ ...stop, order: index + 1 })),
     );
-    logOutreach(facilityId, "do_not_contact", "other", "Marked as do not contact.");
+    setRouteView({ kind: "home" });
   }
 
   function resetDemo() {
@@ -507,7 +785,10 @@ export default function NearMyRouteApp() {
     setFacilities(initialFacilities);
     setRouteStops(initialRouteStops);
     setOutreachLogs(initialOutreachLogs);
+    setActiveTab("Near My Route");
+    setRouteView({ kind: "home" });
     setSelectedFacilityId("encompass-westchase");
+    setShowMessage(false);
     setReviewRows([]);
     setScheduleText(sampleSchedule);
   }
@@ -522,8 +803,7 @@ export default function NearMyRouteApp() {
     const matchesContact =
       contactStatusFilter === "All" ||
       (contactStatusFilter === "Known contacts" && facility.contacts.length > 0) ||
-      (contactStatusFilter === "No contact" && facility.contacts.length === 0) ||
-      (contactStatusFilter === "Do not contact" && facility.doNotContact);
+      (contactStatusFilter === "No contact" && facility.contacts.length === 0);
     const olderThan = formatDaysAgo(facility.lastContacted) === "Never" || Number(formatDaysAgo(facility.lastContacted).split(" ")[0]) >= lastContactedOlderThan;
 
     return matchesSearch && matchesType && matchesContact && olderThan;
@@ -531,7 +811,9 @@ export default function NearMyRouteApp() {
 
   const groupedOpportunities = opportunityGroups.map((group) => ({
     group,
-    items: opportunities.filter((item) => item.group === group),
+    items: opportunities
+      .filter((item) => item.group === group)
+      .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score),
   }));
 
   return (
@@ -548,11 +830,11 @@ export default function NearMyRouteApp() {
             </div>
           </div>
           <nav className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            {["Near My Route", "Facilities", "Import Schedule", "Outreach"].map((tab) => (
+            {(["Near My Route", "Facilities", "Import Schedule", "Outreach"] as AppTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
-                onClick={() => setActiveTab(tab)}
+                onClick={() => selectTopLevelTab(tab)}
                 className={cx(
                   "rounded-md px-3 py-2 text-[13px] font-bold transition",
                   activeTab === tab ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white",
@@ -569,9 +851,43 @@ export default function NearMyRouteApp() {
       </header>
 
       {activeTab === "Near My Route" ? (
-        <main className="mx-auto flex max-w-[1800px] flex-col px-4 py-4 xl:h-[calc(100vh-74px)]">
-          <section className="mb-3 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[auto_220px_1fr] lg:items-center">
-            <Button tone="primary" onClick={() => setActiveTab("Import Schedule")} className="w-full lg:w-auto">
+        <>
+        {routeView.kind === "review" ? (
+          <main className="mx-auto max-w-2xl px-4 py-4 xl:hidden">
+            <Button tone="ghost" onClick={() => closeFacilityReview(routeView)}>
+              <ArrowLeft size={15} /> {reviewBackLabel(routeView)}
+            </Button>
+            <DetailDrawer
+              className="mt-3 rounded-xl border border-slate-200"
+              facility={selectedFacility}
+              opportunity={selectedOpportunity}
+              outreachLogs={selectedOutreachLogs}
+              showMessage={showMessage}
+              onCloseMessage={() => setShowMessage(false)}
+              onAsk={() => setShowMessage(true)}
+              onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
+              onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
+              onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
+            />
+          </main>
+        ) : null}
+
+        {routeView.kind === "confirmation" ? (
+          <TentativeAddConfirmation
+            facility={facilityById.get(routeView.facilityId)}
+            routeStops={orderedRouteStops}
+            facilityById={facilityById}
+            snapshot={routeView.snapshot}
+            contactedToday={routeView.contactedToday}
+            canRemove={routeView.canRemove}
+            onBackToRoute={() => openRouteHome(routeView.facilityId)}
+            onRemoveTentative={() => removeTentativeStop(routeView.routeStopId)}
+          />
+        ) : null}
+
+        <main className={cx("mx-auto flex max-w-[1800px] flex-col px-4 py-4 xl:h-[calc(100vh-74px)]", routeView.kind !== "home" && "hidden xl:flex")}>
+          <section className="mb-3 hidden gap-2 rounded-xl border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[auto_220px_1fr] lg:items-center">
+            <Button tone="primary" onClick={() => selectTopLevelTab("Import Schedule")} className="w-full lg:w-auto">
               <Clipboard size={15} /> Import Schedule
             </Button>
             <label className="flex h-10 items-center gap-3 rounded-md border border-slate-200 px-3 text-[13px] font-bold text-slate-600">
@@ -604,10 +920,17 @@ export default function NearMyRouteApp() {
           </section>
           <div className="flex min-h-0 flex-1 flex-col gap-0 xl:flex-row">
           <section className="flex w-full shrink-0 flex-col gap-3 rounded-l-xl border border-slate-200 bg-slate-50 p-3 xl:w-[440px] xl:overflow-y-auto">
+            <BestAddOnCard
+              opportunity={featuredOpportunity}
+              onReview={() => featuredOpportunity && openFacilityReview(featuredOpportunity.facility.id)}
+              onPreview={() => featuredOpportunity && selectFacility(featuredOpportunity.facility.id)}
+              onImport={() => selectTopLevelTab("Import Schedule")}
+            />
+
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s Route</h2>
-                <Button tone="primary" onClick={() => setActiveTab("Import Schedule")}>
+                <Button onClick={() => selectTopLevelTab("Import Schedule")}>
                   <Clipboard size={15} /> Import Schedule
                 </Button>
               </div>
@@ -616,10 +939,10 @@ export default function NearMyRouteApp() {
                   const facility = facilityById.get(stop.facilityId);
                   if (!facility) return null;
                   return (
-                    <button
-                      key={stop.id}
-                      type="button"
-                      onClick={() => selectFacility(facility.id)}
+                      <button
+                        key={stop.id}
+                        type="button"
+                        onClick={() => selectFacility(facility.id)}
                       className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
@@ -686,12 +1009,10 @@ export default function NearMyRouteApp() {
                         <OpportunityCard
                           key={opportunity.facility.id}
                           opportunity={opportunity}
+                          rank={detourRankByFacilityId.get(opportunity.facility.id) ?? 0}
                           selected={selectedFacilityId === opportunity.facility.id}
                           onSelect={() => selectFacility(opportunity.facility.id)}
-                          onAsk={() => {
-                            selectFacility(opportunity.facility.id);
-                            setShowMessage(true);
-                          }}
+                          onReview={() => openFacilityReview(opportunity.facility.id)}
                           onMarkContacted={() => logOutreach(opportunity.facility.id, "texted", "text", "Marked contacted from opportunity card.")}
                           onAddTentatively={() => addTentatively(opportunity.facility.id)}
                         />
@@ -714,6 +1035,7 @@ export default function NearMyRouteApp() {
           </section>
 
           <DetailDrawer
+            className="hidden xl:block"
             facility={selectedFacility}
             opportunity={selectedOpportunity}
             outreachLogs={selectedOutreachLogs}
@@ -723,10 +1045,10 @@ export default function NearMyRouteApp() {
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
-            onDoNotContact={() => selectedFacility && doNotContact(selectedFacility.id)}
           />
           </div>
         </main>
+        </>
       ) : null}
 
       {activeTab === "Facilities" ? (
@@ -750,7 +1072,7 @@ export default function NearMyRouteApp() {
                   ))}
                 </select>
                 <select value={contactStatusFilter} onChange={(event) => setContactStatusFilter(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
-                  {["All", "Known contacts", "No contact", "Do not contact"].map((item) => (
+                  {["All", "Known contacts", "No contact"].map((item) => (
                     <option key={item}>{item}</option>
                   ))}
                 </select>
@@ -767,7 +1089,43 @@ export default function NearMyRouteApp() {
                 </label>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="grid gap-3 p-3 lg:hidden">
+              {filteredFacilities.map((facility) => {
+                const contact = primaryContact(facility);
+                return (
+                  <article
+                    key={facility.id}
+                    className={cx(
+                      "rounded-lg border bg-white p-3 shadow-sm",
+                      selectedFacilityId === facility.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openFacilityReview(facility.id)}
+                      className="block w-full text-left"
+                    >
+                      <h3 className="text-base font-black text-slate-950">{facility.name}</h3>
+                      <p className="mt-1 text-sm text-slate-600">{facility.address}</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {contact ? `${contact.name}, ${contact.role ?? "SLP"}` : "No known contact"}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        <Badge>{facility.facilityType ?? "Facility"}</Badge>
+                        <Badge tone={facility.sameDayFriendly === "yes" ? "green" : "slate"}>
+                          {friendlyValue(facility.sameDayFriendly)}
+                        </Badge>
+                        <Badge tone="blue">{formatDaysAgo(facility.lastContacted)}</Badge>
+                      </div>
+                    </button>
+                    <Button className="mt-3 w-full" tone="primary" onClick={() => openFacilityReview(facility.id)}>
+                      Review fit
+                    </Button>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[1050px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
@@ -810,6 +1168,7 @@ export default function NearMyRouteApp() {
             </div>
           </section>
           <DetailDrawer
+            className="hidden xl:block"
             facility={selectedFacility}
             opportunity={selectedOpportunity}
             outreachLogs={selectedOutreachLogs}
@@ -819,7 +1178,6 @@ export default function NearMyRouteApp() {
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged from Facilities view.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
-            onDoNotContact={() => selectedFacility && doNotContact(selectedFacility.id)}
           />
         </main>
       ) : null}
@@ -853,8 +1211,7 @@ export default function NearMyRouteApp() {
                   const result = applyImportRows(reviewRows, facilities);
                   setFacilities(result.facilities);
                   setRouteStops(result.routeStops);
-                  setActiveTab("Near My Route");
-                  setSelectedFacilityId(result.routeStops[0]?.facilityId ?? selectedFacilityId);
+                  openRouteHome(result.routeStops[0]?.facilityId ?? selectedFacilityId);
                 }}
               >
                 Confirm Route
@@ -999,8 +1356,7 @@ export default function NearMyRouteApp() {
                 </Button>
                 <Button
                   onClick={() => {
-                    setActiveTab("Near My Route");
-                    setShowMessage(true);
+                    openFacilityReview(selectedFacilityId, true);
                   }}
                 >
                   <MessageSquareText size={15} /> Open Template
