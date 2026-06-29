@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Check,
   Clipboard,
+  ExternalLink,
   Filter,
   MapPinned,
   MessageSquareText,
@@ -21,6 +22,13 @@ import { applyImportRows, parseScheduleText } from "@/lib/scheduleImport";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
 import type { Facility, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus } from "@/lib/types";
 import { formatDaysAgo, friendlyValue, primaryContact, safeMessage, todayIsoDate } from "@/lib/format";
+import {
+  buildGoogleMapsDirectionsUrl,
+  googleMapsWaypointWarning,
+  orderedRouteFacilities,
+  routeFacilitiesWithInsertedAddOn,
+} from "@/lib/googleMaps";
+import { isDueForFollowUp, outreachRecencyLabel, outreachRecencyState } from "@/lib/outreachRecency";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -150,20 +158,25 @@ function OpportunityCard({
   opportunity,
   rank,
   selected,
+  followUpThresholdDays,
   onSelect,
   onReview,
   onMarkContacted,
   onAddTentatively,
+  onPreviewRoute,
 }: {
   opportunity: Opportunity;
   rank: number;
   selected: boolean;
+  followUpThresholdDays: number;
   onSelect: () => void;
   onReview: () => void;
   onMarkContacted: () => void;
   onAddTentatively: () => void;
+  onPreviewRoute: () => void;
 }) {
   const contact = primaryContact(opportunity.facility);
+  const recencyState = outreachRecencyState(opportunity.facility, followUpThresholdDays);
 
   return (
     <article
@@ -196,6 +209,7 @@ function OpportunityCard({
             {opportunity.nearestStopDistanceMiles} mi from {opportunity.nearestStopName}
           </p>
           <p>Last contacted: {formatDaysAgo(opportunity.facility.lastContacted)}</p>
+          <p>Today status: {outreachRecencyLabel(recencyState)}</p>
           <p>Contact: {contact ? `${contact.name}, ${contact.role ?? "SLP"}` : "No known contact"}</p>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -216,8 +230,8 @@ function OpportunityCard({
         <Button onClick={onAddTentatively}>
           <Plus size={15} /> Add Tentatively
         </Button>
-        <Button onClick={onSelect}>
-          <MapPinned size={15} /> Preview Map
+        <Button onClick={onPreviewRoute}>
+          <ExternalLink size={15} /> Preview route
         </Button>
       </div>
     </article>
@@ -275,7 +289,7 @@ function BestAddOnCard({
           <MessageSquareText size={15} /> Review fit
         </Button>
         <Button onClick={onPreview}>
-          <MapPinned size={15} /> Preview map
+          <ExternalLink size={15} /> Preview route
         </Button>
       </div>
     </section>
@@ -293,6 +307,8 @@ function DetailDrawer({
   onCall,
   onMarkContacted,
   onAddRoute,
+  onPreviewRoute,
+  copyFeedback,
 }: {
   facility?: Facility;
   opportunity?: Opportunity;
@@ -304,6 +320,8 @@ function DetailDrawer({
   onCall: () => void;
   onMarkContacted: () => void;
   onAddRoute: () => void;
+  onPreviewRoute: () => void;
+  copyFeedback?: "copied" | "failed";
 }) {
   if (!facility) {
     return (
@@ -405,8 +423,18 @@ function DetailDrawer({
           <p className="mt-2 text-xs font-medium text-blue-800">
             Facility-level only. No patient names or clinical details.
           </p>
+          {copyFeedback === "copied" ? (
+            <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
+              Copied and logged as texted today.
+            </p>
+          ) : null}
+          {copyFeedback === "failed" ? (
+            <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+              Clipboard was blocked. The message is visible above so you can copy it manually.
+            </p>
+          ) : null}
           <Button tone="primary" className="mt-3 w-full" onClick={onMarkContacted}>
-            <Clipboard size={15} /> Copy and Mark Texted
+            <Clipboard size={15} /> Copy message
           </Button>
         </section>
       ) : null}
@@ -443,9 +471,14 @@ function DetailDrawer({
           <Phone size={15} /> Call
         </Button>
         {opportunity ? (
-          <Button onClick={onAddRoute}>
-            <Plus size={15} /> Add Tentatively
-          </Button>
+          <>
+            <Button onClick={onPreviewRoute}>
+              <ExternalLink size={15} /> Preview route
+            </Button>
+            <Button onClick={onAddRoute}>
+              <Plus size={15} /> Add Tentatively
+            </Button>
+          </>
         ) : null}
       </div>
     </aside>
@@ -551,14 +584,15 @@ export default function NearMyRouteApp() {
   const [notContactedRecentlyOnly, setNotContactedRecentlyOnly] = useState(false);
   const [knownContactsOnly, setKnownContactsOnly] = useState(false);
   const [sameDayFriendlyOnly, setSameDayFriendlyOnly] = useState(false);
+  const [followUpThresholdDays, setFollowUpThresholdDays] = useState(14);
   const [facilitySearch, setFacilitySearch] = useState("");
   const [facilityTypeFilter, setFacilityTypeFilter] = useState("All");
   const [contactStatusFilter, setContactStatusFilter] = useState("All");
-  const [lastContactedOlderThan, setLastContactedOlderThan] = useState(14);
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
   const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
   const [showMessage, setShowMessage] = useState(false);
+  const [copyFeedbackByFacilityId, setCopyFeedbackByFacilityId] = useState<Record<string, "copied" | "failed">>({});
   const [hydrated, setHydrated] = useState(false);
   const idCounterRef = useRef(0);
 
@@ -594,11 +628,11 @@ export default function NearMyRouteApp() {
       calculateRouteOpportunities(routeStops, facilities, {
         maxDetourMinutes,
         averageSpeedMph: 28,
-        excludeRecentlyContactedDays: notContactedRecentlyOnly ? 14 : undefined,
+        excludeRecentlyContactedDays: notContactedRecentlyOnly ? followUpThresholdDays : undefined,
         knownContactsOnly,
         sameDayFriendlyOnly,
       }),
-    [facilities, knownContactsOnly, maxDetourMinutes, notContactedRecentlyOnly, routeStops, sameDayFriendlyOnly],
+    [facilities, followUpThresholdDays, knownContactsOnly, maxDetourMinutes, notContactedRecentlyOnly, routeStops, sameDayFriendlyOnly],
   );
 
   const routeFitOpportunities = useMemo(
@@ -619,6 +653,9 @@ export default function NearMyRouteApp() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const orderedRouteStops = [...routeStops].sort((a, b) => a.order - b.order);
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
+  const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
+  const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
+  const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
   const detourRankByFacilityId = new Map(
     [...opportunities]
       .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)
@@ -631,6 +668,11 @@ export default function NearMyRouteApp() {
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);
     setShowMessage(false);
+    setCopyFeedbackByFacilityId((current) => {
+      const next = { ...current };
+      delete next[facilityId];
+      return next;
+    });
   }
 
   function selectTopLevelTab(tab: AppTab) {
@@ -715,14 +757,45 @@ export default function NearMyRouteApp() {
     );
   }
 
-  async function markTexted(facilityId: string) {
+  async function copySafeMessage(facilityId: string) {
     const facility = facilities.find((item) => item.id === facilityId);
     const contact = facility ? primaryContact(facility) : undefined;
-    if (navigator.clipboard && facility) {
-      await navigator.clipboard.writeText(safeMessage(contact?.name));
+    if (!facility || !navigator.clipboard) {
+      setShowMessage(true);
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "failed" }));
+      return false;
     }
+
+    try {
+      await navigator.clipboard.writeText(safeMessage(contact?.name));
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "copied" }));
+      return true;
+    } catch {
+      setShowMessage(true);
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "failed" }));
+      return false;
+    }
+  }
+
+  async function markTexted(facilityId: string) {
+    const copied = await copySafeMessage(facilityId);
+    if (!copied) return;
     logOutreach(facilityId, "texted", "text", "Copied safe add-on request template.");
-    setShowMessage(false);
+  }
+
+  function openMapsUrl(url?: string) {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function previewRouteWithAddOn(opportunity: Opportunity) {
+    const previewFacilities = routeFacilitiesWithInsertedAddOn(
+      routeStops,
+      facilities,
+      opportunity.facility,
+      opportunity.bestInsertionAfterStopId,
+    );
+    openMapsUrl(buildGoogleMapsDirectionsUrl(previewFacilities));
   }
 
   function addTentatively(facilityId: string) {
@@ -789,6 +862,7 @@ export default function NearMyRouteApp() {
     setRouteView({ kind: "home" });
     setSelectedFacilityId("encompass-westchase");
     setShowMessage(false);
+    setCopyFeedbackByFacilityId({});
     setReviewRows([]);
     setScheduleText(sampleSchedule);
   }
@@ -803,10 +877,10 @@ export default function NearMyRouteApp() {
     const matchesContact =
       contactStatusFilter === "All" ||
       (contactStatusFilter === "Known contacts" && facility.contacts.length > 0) ||
-      (contactStatusFilter === "No contact" && facility.contacts.length === 0);
-    const olderThan = formatDaysAgo(facility.lastContacted) === "Never" || Number(formatDaysAgo(facility.lastContacted).split(" ")[0]) >= lastContactedOlderThan;
+      (contactStatusFilter === "No contact" && facility.contacts.length === 0) ||
+      (contactStatusFilter === "Due for follow-up" && isDueForFollowUp(facility, followUpThresholdDays));
 
-    return matchesSearch && matchesType && matchesContact && olderThan;
+    return matchesSearch && matchesType && matchesContact;
   });
 
   const groupedOpportunities = opportunityGroups.map((group) => ({
@@ -868,6 +942,8 @@ export default function NearMyRouteApp() {
               onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
               onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
               onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
+              onPreviewRoute={() => selectedOpportunity && previewRouteWithAddOn(selectedOpportunity)}
+              copyFeedback={selectedFacility ? copyFeedbackByFacilityId[selectedFacility.id] : undefined}
             />
           </main>
         ) : null}
@@ -904,9 +980,9 @@ export default function NearMyRouteApp() {
                 ))}
               </select>
             </label>
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-4">
               <Toggle
-                label="Not contacted recently"
+                label="Due for follow-up"
                 checked={notContactedRecentlyOnly}
                 onChange={setNotContactedRecentlyOnly}
               />
@@ -916,6 +992,16 @@ export default function NearMyRouteApp() {
                 checked={sameDayFriendlyOnly}
                 onChange={setSameDayFriendlyOnly}
               />
+              <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
+                Due after
+                <input
+                  type="number"
+                  min="1"
+                  value={followUpThresholdDays}
+                  onChange={(event) => setFollowUpThresholdDays(Number(event.target.value))}
+                  className="h-9 w-16 rounded-md border border-slate-200 px-2 text-sm font-bold text-slate-900"
+                />
+              </label>
             </div>
           </section>
           <div className="flex min-h-0 flex-1 flex-col gap-0 xl:flex-row">
@@ -923,17 +1009,27 @@ export default function NearMyRouteApp() {
             <BestAddOnCard
               opportunity={featuredOpportunity}
               onReview={() => featuredOpportunity && openFacilityReview(featuredOpportunity.facility.id)}
-              onPreview={() => featuredOpportunity && selectFacility(featuredOpportunity.facility.id)}
+              onPreview={() => featuredOpportunity && previewRouteWithAddOn(featuredOpportunity)}
               onImport={() => selectTopLevelTab("Import Schedule")}
             />
 
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s Route</h2>
-                <Button onClick={() => selectTopLevelTab("Import Schedule")}>
-                  <Clipboard size={15} /> Import Schedule
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => openMapsUrl(currentRouteMapsUrl)}>
+                    <ExternalLink size={15} /> Open in Google Maps
+                  </Button>
+                  <Button onClick={() => selectTopLevelTab("Import Schedule")}>
+                    <Clipboard size={15} /> Import Schedule
+                  </Button>
+                </div>
               </div>
+              {currentRouteMapsWarning ? (
+                <p className="mt-2 rounded-md border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-800">
+                  {currentRouteMapsWarning}
+                </p>
+              ) : null}
               <div className="mt-3 space-y-2">
                 {orderedRouteStops.map((stop) => {
                   const facility = facilityById.get(stop.facilityId);
@@ -978,7 +1074,7 @@ export default function NearMyRouteApp() {
               </label>
               <div className="mt-3 grid gap-2">
                 <Toggle
-                  label="Show only facilities not contacted recently"
+                  label="Show due for follow-up only"
                   checked={notContactedRecentlyOnly}
                   onChange={setNotContactedRecentlyOnly}
                 />
@@ -988,6 +1084,17 @@ export default function NearMyRouteApp() {
                   checked={sameDayFriendlyOnly}
                   onChange={setSameDayFriendlyOnly}
                 />
+                <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
+                  Follow-up after
+                  <input
+                    type="number"
+                    min="1"
+                    value={followUpThresholdDays}
+                    onChange={(event) => setFollowUpThresholdDays(Number(event.target.value))}
+                    className="h-9 w-20 rounded-md border border-slate-200 px-2 text-sm font-bold text-slate-900"
+                  />
+                  days
+                </label>
               </div>
             </div>
 
@@ -1011,10 +1118,12 @@ export default function NearMyRouteApp() {
                           opportunity={opportunity}
                           rank={detourRankByFacilityId.get(opportunity.facility.id) ?? 0}
                           selected={selectedFacilityId === opportunity.facility.id}
+                          followUpThresholdDays={followUpThresholdDays}
                           onSelect={() => selectFacility(opportunity.facility.id)}
                           onReview={() => openFacilityReview(opportunity.facility.id)}
                           onMarkContacted={() => logOutreach(opportunity.facility.id, "texted", "text", "Marked contacted from opportunity card.")}
                           onAddTentatively={() => addTentatively(opportunity.facility.id)}
+                          onPreviewRoute={() => previewRouteWithAddOn(opportunity)}
                         />
                       ))}
                     </div>
@@ -1029,6 +1138,7 @@ export default function NearMyRouteApp() {
               facilities={facilities}
               routeStops={routeStops}
               opportunities={opportunities}
+              followUpThresholdDays={followUpThresholdDays}
               selectedFacilityId={selectedFacilityId}
               onSelectFacility={selectFacility}
             />
@@ -1045,6 +1155,8 @@ export default function NearMyRouteApp() {
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
+            onPreviewRoute={() => selectedOpportunity && previewRouteWithAddOn(selectedOpportunity)}
+            copyFeedback={selectedFacility ? copyFeedbackByFacilityId[selectedFacility.id] : undefined}
           />
           </div>
         </main>
@@ -1056,7 +1168,7 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-200 p-4">
               <h2 className="text-lg font-black">Facilities</h2>
-              <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_180px_180px]">
+              <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_190px_190px]">
                 <label className="relative">
                   <Search className="absolute left-3 top-3 text-slate-400" size={16} />
                   <input
@@ -1072,17 +1184,17 @@ export default function NearMyRouteApp() {
                   ))}
                 </select>
                 <select value={contactStatusFilter} onChange={(event) => setContactStatusFilter(event.target.value)} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
-                  {["All", "Known contacts", "No contact"].map((item) => (
+                  {["All", "Known contacts", "No contact", "Due for follow-up"].map((item) => (
                     <option key={item}>{item}</option>
                   ))}
                 </select>
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                  Older than
+                  Due after
                   <input
                     type="number"
-                    min="0"
-                    value={lastContactedOlderThan}
-                    onChange={(event) => setLastContactedOlderThan(Number(event.target.value))}
+                    min="1"
+                    value={followUpThresholdDays}
+                    onChange={(event) => setFollowUpThresholdDays(Number(event.target.value))}
                     className="h-10 w-20 rounded-md border border-slate-200 px-2 text-sm text-slate-900"
                   />
                   days
@@ -1116,6 +1228,9 @@ export default function NearMyRouteApp() {
                           {friendlyValue(facility.sameDayFriendly)}
                         </Badge>
                         <Badge tone="blue">{formatDaysAgo(facility.lastContacted)}</Badge>
+                        <Badge tone={outreachRecencyState(facility, followUpThresholdDays) === "due_for_follow_up" ? "orange" : "slate"}>
+                          {outreachRecencyLabel(outreachRecencyState(facility, followUpThresholdDays))}
+                        </Badge>
                       </div>
                     </button>
                     <Button className="mt-3 w-full" tone="primary" onClick={() => openFacilityReview(facility.id)}>
@@ -1178,6 +1293,8 @@ export default function NearMyRouteApp() {
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged from Facilities view.")}
             onMarkContacted={() => selectedFacility && markTexted(selectedFacility.id)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
+            onPreviewRoute={() => selectedOpportunity && previewRouteWithAddOn(selectedOpportunity)}
+            copyFeedback={selectedFacility ? copyFeedbackByFacilityId[selectedFacility.id] : undefined}
           />
         </main>
       ) : null}

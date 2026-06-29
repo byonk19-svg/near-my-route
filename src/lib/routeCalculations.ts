@@ -22,10 +22,11 @@ export function distanceToDriveMinutes(miles: number, averageSpeedMph: number): 
   return Math.max(3, Math.round(((miles * URBAN_ROAD_FACTOR) / averageSpeedMph) * 60));
 }
 
-export function daysSince(dateString?: string, now = new Date("2026-06-28T12:00:00")) {
+export function daysSince(dateString?: string, now = new Date()) {
   if (!dateString) return Number.POSITIVE_INFINITY;
   const date = new Date(`${dateString}T12:00:00`);
-  return Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  const comparisonDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  return Math.floor((comparisonDate.getTime() - date.getTime()) / 86_400_000);
 }
 
 function groupForMinutes(minutes: number): Opportunity["group"] {
