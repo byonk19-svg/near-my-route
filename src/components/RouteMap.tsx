@@ -69,7 +69,8 @@ function Recenter({ facility }: { facility?: Facility }) {
   useEffect(() => {
     if (hasValidCoordinates(facility)) {
       try {
-        map.flyTo([facility.lat, facility.lng], 13, { duration: 0.5 });
+        map.invalidateSize({ animate: false });
+        map.setView([facility.lat, facility.lng], 13, { animate: false });
       } catch {
         // Imported or persisted facilities can be incomplete; route workflow should keep running.
       }
