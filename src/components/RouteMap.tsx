@@ -5,11 +5,13 @@ import type { ReactNode } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import type { Facility, Opportunity, RouteStop } from "@/lib/types";
 import { routeLineFacilities } from "@/lib/routeCalculations";
+import { outreachRecencyLabel, outreachRecencyState, type OutreachRecencyState } from "@/lib/outreachRecency";
 
 type RouteMapProps = {
   facilities: Facility[];
   routeStops: RouteStop[];
   opportunities: Opportunity[];
+  followUpThresholdDays: number;
   selectedFacilityId?: string;
   onSelectFacility: (facilityId: string) => void;
 };
@@ -71,11 +73,21 @@ function Recenter({ facility }: { facility?: Facility }) {
   return null;
 }
 
-function facilityColor(facility: Facility, opportunity?: Opportunity, selected?: boolean) {
+const outreachLegend: Array<{ state: OutreachRecencyState; color: string }> = [
+  { state: "never_contacted", color: "#64748b" },
+  { state: "due_for_follow_up", color: "#eab308" },
+  { state: "contacted_recently", color: "#16a34a" },
+  { state: "contacted_today", color: "#2563eb" },
+  { state: "do_not_contact", color: "#991b1b" },
+];
+
+function facilityColor(facility: Facility, followUpThresholdDays: number, selected?: boolean) {
   if (selected) return "#111827";
-  if (facility.doNotContact) return "#94a3b8";
-  if (facility.lastContacted) return "#16a34a";
-  if (opportunity && opportunity.addedDriveMinutes <= 15) return "#f97316";
+  const state = outreachRecencyState(facility, followUpThresholdDays);
+  if (state === "do_not_contact") return "#991b1b";
+  if (state === "contacted_today") return "#2563eb";
+  if (state === "contacted_recently") return "#16a34a";
+  if (state === "due_for_follow_up") return "#eab308";
   return "#64748b";
 }
 
@@ -83,6 +95,7 @@ export default function RouteMap({
   facilities,
   routeStops,
   opportunities,
+  followUpThresholdDays,
   selectedFacilityId,
   onSelectFacility,
 }: RouteMapProps) {
@@ -97,6 +110,7 @@ export default function RouteMap({
     : [29.735, -95.57];
 
   return (
+    <div className="relative h-full w-full">
     <TypedMapContainer center={center} zoom={11} scrollWheelZoom className="h-full w-full">
       <TypedTileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -137,7 +151,8 @@ export default function RouteMap({
         .map((facility) => {
           const opportunity = opportunityByFacilityId.get(facility.id);
           const selected = facility.id === selectedFacilityId;
-          const color = facilityColor(facility, opportunity, selected);
+          const recencyState = outreachRecencyState(facility, followUpThresholdDays);
+          const color = facilityColor(facility, followUpThresholdDays, selected);
 
           return (
             <TypedCircleMarker
@@ -147,7 +162,7 @@ export default function RouteMap({
               pathOptions={{
                 color,
                 fillColor: color,
-                fillOpacity: facility.doNotContact || opportunity?.group === "Not Worth It Today" ? 0.45 : 0.86,
+                fillOpacity: facility.doNotContact || opportunity?.group === "Not Worth It Today" ? 0.5 : 0.9,
                 weight: selected ? 4 : 2,
               }}
               eventHandlers={{ click: () => onSelectFacility(facility.id) }}
@@ -155,6 +170,7 @@ export default function RouteMap({
               <TypedTooltip direction="top" offset={[0, -8]}>
                 {facility.name}
                 {opportunity ? ` · +${opportunity.addedDriveMinutes} min` : ""}
+                {` · ${outreachRecencyLabel(recencyState)}`}
               </TypedTooltip>
               <TypedPopup>
                 <strong>{facility.name}</strong>
@@ -162,10 +178,23 @@ export default function RouteMap({
                 {opportunity
                   ? `${opportunity.bestInsertionLabel} · +${opportunity.addedDriveMinutes} min`
                   : facility.address}
+                <br />
+                {outreachRecencyLabel(recencyState)}
               </TypedPopup>
             </TypedCircleMarker>
           );
         })}
     </TypedMapContainer>
+    <div className="pointer-events-none absolute bottom-3 left-3 z-[450] rounded-md border border-slate-200 bg-white/95 p-2 text-[11px] font-semibold text-slate-700 shadow-sm">
+      <div className="grid gap-1">
+        {outreachLegend.map((item) => (
+          <div key={item.state} className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+            <span>{outreachRecencyLabel(item.state)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+    </div>
   );
 }
