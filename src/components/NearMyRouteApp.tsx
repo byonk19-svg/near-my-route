@@ -29,6 +29,7 @@ import {
   googleMapsWaypointWarning,
   orderedRouteFacilities,
   routeFacilitiesWithInsertedAddOn,
+  splitGoogleMapsDirectionsUrls,
 } from "@/lib/googleMaps";
 import { isDueForFollowUp, outreachRecencyLabel, outreachRecencyState } from "@/lib/outreachRecency";
 import {
@@ -1062,6 +1063,7 @@ export default function NearMyRouteApp() {
   const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
   const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
   const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
+  const currentRouteSplitUrls = splitGoogleMapsDirectionsUrls(currentRouteFacilities);
   const detourRankByFacilityId = new Map(
     [...opportunities]
       .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)
@@ -1280,12 +1282,22 @@ export default function NearMyRouteApp() {
   }
 
   function removeTentativeStop(routeStopId: string) {
+    const removedStop = routeStops.find(
+      (stop) => stop.id === routeStopId && stop.status === "tentative" && stop.source === "today_add_on",
+    );
+
     setRouteStops((current) =>
       current
         .filter((stop) => stop.id !== routeStopId || stop.status !== "tentative")
         .sort((a, b) => a.order - b.order)
         .map((stop, index) => ({ ...stop, order: index + 1 })),
     );
+    if (removedStop) {
+      if (removedStop.addedFromLogId) {
+        setOutreachLogs((current) => current.filter((log) => log.id !== removedStop.addedFromLogId));
+      }
+      setSelectedFacilityId(removedStop.facilityId);
+    }
     setRouteView({ kind: "home" });
   }
 
@@ -1498,6 +1510,15 @@ export default function NearMyRouteApp() {
                 <p className="mt-2 rounded-md border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-800">
                   {currentRouteMapsWarning}
                 </p>
+              ) : null}
+              {currentRouteSplitUrls.length > 0 ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {currentRouteSplitUrls.map((url, index) => (
+                    <Button key={url} onClick={() => openMapsUrl(url)}>
+                      <ExternalLink size={15} /> Open leg {index + 1}
+                    </Button>
+                  ))}
+                </div>
               ) : null}
               <div className="mt-3 space-y-2">
                 {orderedRouteStops.map((stop) => {
@@ -1714,7 +1735,7 @@ export default function NearMyRouteApp() {
               opportunities={opportunities}
               outreachLogs={outreachLogs}
               selectedFacilityId={selectedFacilityId}
-              onSelectFacility={selectFacility}
+              onSelectFacility={(facilityId) => openFacilityReview(facilityId)}
             />
           </section>
 
@@ -1919,7 +1940,7 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-black">Review imported stops</h2>
-              <div className="hidden sm:block">
+              <div className="hidden lg:block">
                 <Button
                   tone="primary"
                   disabled={reviewRows.length === 0}
