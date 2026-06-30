@@ -9,6 +9,7 @@
     "test:e2e:import": "node scripts/verify-import-guardrails.mjs",
     "test:e2e:messages": "node scripts/verify-open-messages-flow.mjs",
     "test:e2e:outreach-priority": "node scripts/verify-outreach-priority.mjs",
+    "test:e2e:dogfood": "node scripts/verify-dogfood-route-flow.mjs",
     "start": "next start",
     "lint": "eslint"
   },

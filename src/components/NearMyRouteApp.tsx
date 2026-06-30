@@ -636,7 +636,7 @@ function DetailDrawer({
           </p>
           {copyFeedback === "opened" ? (
             <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
-              Template copied. Messages opened and this facility is logged as texted today.
+              Template copied and Messages opened. Return here after sending, then mark this facility texted.
             </p>
           ) : null}
           {copyFeedback === "copied" ? (
@@ -856,7 +856,8 @@ function TextFirstCard({
 
   const contact = primaryContact(item.facility);
   const readiness = textReadiness(item.facility);
-  const labels = outreachReasonLabels(item);
+  const readinessLabel = readiness === "ready" ? "Ready to text" : readiness === "needs_real_phone" ? "Needs real phone" : "Needs phone";
+  const labels = outreachReasonLabels(item).filter((label) => label !== readinessLabel);
 
   return (
     <section data-testid="text-first-card" className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -871,9 +872,7 @@ function TextFirstCard({
             {contact ? `${contact.name}, ${contact.role ?? "SLP Contact"}` : "No known contact"}
           </p>
         </div>
-        <Badge tone={readiness === "ready" ? "green" : "orange"}>
-          {readiness === "ready" ? "Ready to text" : readiness === "needs_real_phone" ? "Needs real phone" : "Needs phone"}
-        </Badge>
+        <Badge tone={readiness === "ready" ? "green" : "orange"}>{readinessLabel}</Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {labels.map((label) => (
@@ -1642,9 +1641,13 @@ export default function NearMyRouteApp() {
       return;
     }
 
+    const smsPhone = contact.phone;
+    setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
     await copySafeMessage(facilityId, "opened");
-    logOutreach(facilityId, "texted", "text", `Opened Messages to ${contact.name}. Template copied as fallback.`, contact.name);
-    window.location.href = buildSmsUrl(contact.phone, safeMessage());
+    openFacilityReview(facilityId, true, activeTab);
+    window.setTimeout(() => {
+      window.location.href = buildSmsUrl(smsPhone, safeMessage());
+    }, 0);
   }
 
   function markTexted(facilityId: string) {
