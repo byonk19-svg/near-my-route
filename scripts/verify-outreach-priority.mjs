@@ -75,7 +75,7 @@ try {
   await textFirst.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
   assert.equal(await textFirst.getByText("Memorial SNF").count(), 0);
   await textFirst.getByText("+3 min detour").waitFor();
-  assert.ok(await textFirst.getByText("Needs real phone").count() > 0);
+  assert.equal(await textFirst.getByText("Needs real phone").count(), 1);
   assert.ok(await textFirst.getByText("Same-day friendly").count() > 0);
   assert.ok(await textFirst.getByText("High volume").count() > 0);
 

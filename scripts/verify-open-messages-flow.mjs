@@ -3,6 +3,8 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.MESSAGES_FLOW_URL ?? "http://localhost:3018";
 const storageKey = "near-my-route-state-v1";
+const approvedMessage =
+  "Hi! It's Elaine, SLP with Professional Imaging. We'll be doing MBSSs in your area this morning. Do you have anyone appropriate you'd like us to consider adding today?";
 
 async function clickVisibleButton(pageOrLocator, name) {
   const buttons = pageOrLocator.getByRole("button", { name });
@@ -98,6 +100,7 @@ try {
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
     .first()
     .waitFor();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), approvedMessage);
   const fallbackState = await storedState(page);
   assert.equal(
     fallbackState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
@@ -115,6 +118,56 @@ try {
   );
   const latest = after.outreachLogs.find((log) => log.facilityId === "encompass-westchase" && log.status === "texted");
   assert.equal(latest.contactName, "Lisa");
+
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
+  });
+  await mobileContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseUrl });
+  const mobilePage = await mobileContext.newPage();
+
+  await mobilePage.goto(baseUrl, { waitUntil: "networkidle" });
+  await mobilePage.evaluate(() => window.localStorage.clear());
+  await mobilePage.reload({ waitUntil: "networkidle" });
+  await waitForStoredState(mobilePage, (state) => Array.isArray(state.outreachLogs), "mobile hydrated defaults");
+
+  await clickVisibleButton(mobilePage, "Outreach");
+  const mobileTextFirst = await firstVisible(mobilePage.getByTestId("text-first-card"), "mobile Text First card");
+  await mobileTextFirst.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
+  await clickVisibleButton(mobileTextFirst, "Text");
+  await mobilePage
+    .getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.")
+    .first()
+    .waitFor();
+  await mobilePage.getByLabel("Phone for Lisa").first().fill("713-867-5309");
+  await waitForStoredState(
+    mobilePage,
+    (state) =>
+      state.facilities
+        .find((facility) => facility.id === "encompass-westchase")
+        ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "713-867-5309",
+    "mobile edited phone persisted",
+  );
+  const beforeMobileOpen = await storedState(mobilePage);
+  const beforeMobileTextedCount = beforeMobileOpen.outreachLogs.filter(
+    (log) => log.facilityId === "encompass-westchase" && log.status === "texted",
+  ).length;
+
+  await clickVisibleButton(mobilePage, "Open Messages");
+  await mobilePage
+    .getByText("Template copied and Messages opened. Return here after sending, then mark this facility texted.")
+    .first()
+    .waitFor();
+  assert.equal(await mobilePage.evaluate(() => navigator.clipboard.readText()), approvedMessage);
+  await mobilePage.waitForTimeout(500);
+  const afterMobileOpen = await storedState(mobilePage);
+  assert.equal(
+    afterMobileOpen.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
+    beforeMobileTextedCount,
+    "mobile Messages handoff must not log Texted today before explicit confirmation",
+  );
 
   console.log("Open Messages fallback browser validation passed.");
 } finally {
