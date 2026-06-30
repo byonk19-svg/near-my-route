@@ -46,11 +46,17 @@ import {
   deriveTodayStatus,
   latestTodayLog,
   todayStatusLabel,
-  todayStatusOrder,
   todayStatusSummary,
   todayStatusTone,
   type TodayStatus,
 } from "@/lib/todayStatus";
+import {
+  outreachReasonLabels,
+  selectTextFirst,
+  sortOutreachQueue,
+  textReadiness,
+  type OutreachQueueItem,
+} from "@/lib/outreachPriority";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -710,6 +716,7 @@ function OutreachQueueCard({
   opportunity,
   status,
   latestLog,
+  reasonLabels,
   onReview,
   onTemplate,
   onLogStatus,
@@ -721,6 +728,7 @@ function OutreachQueueCard({
   opportunity?: Opportunity;
   status: TodayStatus;
   latestLog?: OutreachLog;
+  reasonLabels: string[];
   onReview: () => void;
   onTemplate: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
@@ -801,6 +809,16 @@ function OutreachQueueCard({
         <p className="mt-1 text-xs text-slate-500">
           {latestLog ? `${new Date(latestLog.createdAt).toLocaleTimeString()} - ${friendlyValue(latestLog.status)}` : "No update logged today"}
         </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {reasonLabels.map((label) => (
+            <Badge
+              key={label}
+              tone={label.includes("Needs") || label.includes("No phone") ? "orange" : label.includes("friendly") || label.includes("ready") ? "green" : "slate"}
+            >
+              {label}
+            </Badge>
+          ))}
+        </div>
       </button>
       {actionButtons.length > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">{actionButtons}</div> : null}
       {status === "possible_add_on" && !canAddRoute ? (
@@ -814,6 +832,67 @@ function OutreachQueueCard({
         </p>
       ) : null}
     </article>
+  );
+}
+
+function TextFirstCard({
+  item,
+  onText,
+  onReview,
+}: {
+  item?: OutreachQueueItem;
+  onText: () => void;
+  onReview: () => void;
+}) {
+  if (!item) {
+    return (
+    <section data-testid="text-first-card" className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Text first</p>
+        <h3 className="mt-1 text-base font-black text-slate-950">No uncontacted facility needs a text right now</h3>
+      </section>
+    );
+  }
+
+  const contact = primaryContact(item.facility);
+  const readiness = textReadiness(item.facility);
+  const labels = outreachReasonLabels(item);
+
+  return (
+    <section data-testid="text-first-card" className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Text first</p>
+          <h3 className="mt-1 truncate text-xl font-black text-slate-950">{item.facility.name}</h3>
+          <p className="mt-1 text-sm font-semibold text-slate-700">
+            {item.opportunity ? `+${item.opportunity.addedDriveMinutes} min - ${item.opportunity.bestInsertionLabel}` : item.facility.address}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-slate-900">
+            {contact ? `${contact.name}, ${contact.role ?? "SLP Contact"}` : "No known contact"}
+          </p>
+        </div>
+        <Badge tone={readiness === "ready" ? "green" : "orange"}>
+          {readiness === "ready" ? "Ready to text" : readiness === "needs_real_phone" ? "Needs real phone" : "Needs phone"}
+        </Badge>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {labels.map((label) => (
+          <Badge
+            key={label}
+            tone={label.includes("Needs") || label.includes("No phone") ? "orange" : label.includes("friendly") || label.includes("ready") ? "green" : "slate"}
+          >
+            {label}
+          </Badge>
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button tone="primary" onClick={onText}>
+          <Send size={15} /> Text
+        </Button>
+        <Button onClick={onReview}>
+          <MessageSquareText size={15} /> Review
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -1286,7 +1365,7 @@ export default function NearMyRouteApp() {
     : undefined;
   const textPickerFacility = textPickerFacilityId ? facilities.find((facility) => facility.id === textPickerFacilityId) : undefined;
   const textPickerContacts = textPickerFacility ? phoneContacts(textPickerFacility) : [];
-  const todayQueue = facilities
+  const todayQueue = sortOutreachQueue(facilities
     .map((facility) => {
       const opportunity =
         opportunities.find((item) => item.facility.id === facility.id) ??
@@ -1298,12 +1377,12 @@ export default function NearMyRouteApp() {
         status,
         latestLog: latestTodayLog(facility.id, outreachLogs),
       };
-    })
-    .sort((a, b) => {
-      const aOrder = todayStatusOrder.indexOf(a.status);
-      const bOrder = todayStatusOrder.indexOf(b.status);
-      return aOrder - bOrder || (a.opportunity?.addedDriveMinutes ?? 999) - (b.opportunity?.addedDriveMinutes ?? 999);
-    });
+    }));
+  const textFirstItem = selectTextFirst(todayQueue);
+  const remainingQueue = todayQueue.filter((item) => item.facility.id !== textFirstItem?.facility.id);
+  const readyToTextQueue = remainingQueue.filter((item) => item.status === "not_contacted" && textReadiness(item.facility) === "ready");
+  const needsPhoneQueue = remainingQueue.filter((item) => item.status === "not_contacted" && textReadiness(item.facility) !== "ready");
+  const responseQueue = remainingQueue.filter((item) => item.status !== "not_contacted");
   const todayCounts = todayStatusSummary([...todayStatusByFacilityId.values()]);
   const currentRouteStatusCounts = todayStatusSummary(
     orderedRouteStops
@@ -2498,25 +2577,89 @@ export default function NearMyRouteApp() {
             <div className="mt-4">
               <TodayStatusStrip counts={todayCounts} />
             </div>
-            <h3 className="mt-5 text-sm font-black text-slate-950">Current-day response queue</h3>
-            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {todayQueue.map(({ facility, opportunity, status, latestLog }) => (
-                <OutreachQueueCard
-                  key={facility.id}
-                  facility={facility}
-                  opportunity={opportunity}
-                  status={status}
-                  latestLog={latestLog}
-                  onReview={() => openFacilityReview(facility.id, false, "Outreach")}
-                  onTemplate={() => {
-                    void startTextFlow(facility.id);
-                  }}
-                  onLogStatus={(nextStatus, notes) => logTodayResponse(facility.id, nextStatus, notes)}
-                  onAddRoute={() => addTentatively(facility.id)}
-                  onOpenRoute={() => openRouteHome(facility.id)}
-                  onRemoveAddOn={() => removeTodayAddOn(facility.id)}
-                />
-              ))}
+            <TextFirstCard
+              item={textFirstItem}
+              onText={() => textFirstItem && void startTextFlow(textFirstItem.facility.id)}
+              onReview={() => textFirstItem && openFacilityReview(textFirstItem.facility.id, false, "Outreach")}
+            />
+            <h3 className="mt-5 text-sm font-black text-slate-950">Ready to text</h3>
+            <div data-testid="ready-to-text-queue" className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {readyToTextQueue.length > 0 ? (
+                readyToTextQueue.map(({ facility, opportunity, status, latestLog }) => (
+                  <OutreachQueueCard
+                    key={facility.id}
+                    facility={facility}
+                    opportunity={opportunity}
+                    status={status}
+                    latestLog={latestLog}
+                    reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                    onReview={() => openFacilityReview(facility.id, false, "Outreach")}
+                    onTemplate={() => {
+                      void startTextFlow(facility.id);
+                    }}
+                    onLogStatus={(nextStatus, notes) => logTodayResponse(facility.id, nextStatus, notes)}
+                    onAddRoute={() => addTentatively(facility.id)}
+                    onOpenRoute={() => openRouteHome(facility.id)}
+                    onRemoveAddOn={() => removeTodayAddOn(facility.id)}
+                  />
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500">
+                  No text-ready facilities yet.
+                </p>
+              )}
+            </div>
+            {needsPhoneQueue.length > 0 ? (
+              <>
+                <h3 className="mt-5 text-sm font-black text-slate-950">Needs phone before texting</h3>
+                <div data-testid="needs-phone-queue" className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {needsPhoneQueue.map(({ facility, opportunity, status, latestLog }) => (
+                    <OutreachQueueCard
+                      key={facility.id}
+                      facility={facility}
+                      opportunity={opportunity}
+                      status={status}
+                      latestLog={latestLog}
+                      reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                      onReview={() => openFacilityReview(facility.id, false, "Outreach")}
+                      onTemplate={() => {
+                        void startTextFlow(facility.id);
+                      }}
+                      onLogStatus={(nextStatus, notes) => logTodayResponse(facility.id, nextStatus, notes)}
+                      onAddRoute={() => addTentatively(facility.id)}
+                      onOpenRoute={() => openRouteHome(facility.id)}
+                      onRemoveAddOn={() => removeTodayAddOn(facility.id)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
+            <h3 className="mt-5 text-sm font-black text-slate-950">Response queue</h3>
+            <div data-testid="response-queue" className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {responseQueue.length > 0 ? (
+                responseQueue.map(({ facility, opportunity, status, latestLog }) => (
+                  <OutreachQueueCard
+                    key={facility.id}
+                    facility={facility}
+                    opportunity={opportunity}
+                    status={status}
+                    latestLog={latestLog}
+                    reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                    onReview={() => openFacilityReview(facility.id, false, "Outreach")}
+                    onTemplate={() => {
+                      void startTextFlow(facility.id);
+                    }}
+                    onLogStatus={(nextStatus, notes) => logTodayResponse(facility.id, nextStatus, notes)}
+                    onAddRoute={() => addTentatively(facility.id)}
+                    onOpenRoute={() => openRouteHome(facility.id)}
+                    onRemoveAddOn={() => removeTodayAddOn(facility.id)}
+                  />
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500">
+                  No active replies yet.
+                </p>
+              )}
             </div>
             <details className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer text-sm font-black text-slate-900">Outreach history</summary>
