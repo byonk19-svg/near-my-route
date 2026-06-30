@@ -17,6 +17,15 @@ async function clickVisibleButton(pageOrLocator, name) {
   throw new Error(`No visible button named ${String(name)}`);
 }
 
+async function firstVisible(locator, label) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const item = locator.nth(index);
+    if (await item.isVisible()) return item;
+  }
+  throw new Error(`No visible locator found: ${label}`);
+}
+
 async function storedState(page) {
   return page.evaluate((key) => {
     const raw = window.localStorage.getItem(key);
@@ -46,7 +55,7 @@ try {
   await waitForStoredState(page, (state) => Array.isArray(state.outreachLogs), "hydrated defaults");
 
   await clickVisibleButton(page, "Outreach");
-  const parkCard = page.locator("article").filter({ hasText: "Park Manor Westchase" }).first();
+  const parkCard = await firstVisible(page.locator("article").filter({ hasText: "Park Manor Westchase" }), "Park Manor Westchase card");
   await parkCard.getByText("Park Manor Westchase").waitFor();
 
   const before = await storedState(page);
@@ -60,9 +69,41 @@ try {
   await picker.getByText("Maria", { exact: true }).waitFor();
   await picker.getByText("Ken", { exact: true }).waitFor();
   await picker.getByText("Recommended", { exact: true }).waitFor();
+  await picker.getByText("Needs real phone", { exact: true }).first().waitFor();
   await clickVisibleButton(picker, "Ken");
 
   await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
+  await page.getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.").first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
+  const blockedState = await storedState(page);
+  assert.equal(
+    blockedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    beforeTextedCount,
+    "placeholder contacts must not log Texted today",
+  );
+
+  await page.getByLabel("Phone for Ken").first().fill("713-867-5309");
+  await waitForStoredState(
+    page,
+    (state) =>
+      state.facilities
+        .find((facility) => facility.id === "park-manor-westchase")
+        ?.contacts.find((contact) => contact.id === "c-westchase-ken")?.phone === "713-867-5309",
+    "edited phone persisted",
+  );
+  assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
+  const editedState = await storedState(page);
+  assert.equal(
+    editedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    beforeTextedCount,
+    "editing a placeholder phone must not unlock manual Texted today logging before retry",
+  );
+
+  await clickVisibleButton(page, "Open Messages");
+  const updatedPicker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
+  await updatedPicker.getByText("Ken", { exact: true }).waitFor();
+  await clickVisibleButton(updatedPicker, "Ken");
+
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
     .first()
