@@ -1468,6 +1468,7 @@ export default function NearMyRouteApp() {
       ),
     );
     setCopyFeedbackByFacilityId((current) => {
+      if (current[facilityId] === "placeholder_phone") return current;
       const next = { ...current };
       delete next[facilityId];
       return next;

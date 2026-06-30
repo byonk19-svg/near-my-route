@@ -91,6 +91,14 @@ try {
         ?.contacts.find((contact) => contact.id === "c-westchase-ken")?.phone === "713-867-5309",
     "edited phone persisted",
   );
+  assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
+  const editedState = await storedState(page);
+  assert.equal(
+    editedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    beforeTextedCount,
+    "editing a placeholder phone must not unlock manual Texted today logging before retry",
+  );
+
   await clickVisibleButton(page, "Open Messages");
   const updatedPicker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
   await updatedPicker.getByText("Ken", { exact: true }).waitFor();
