@@ -55,54 +55,44 @@ try {
   await waitForStoredState(page, (state) => Array.isArray(state.outreachLogs), "hydrated defaults");
 
   await clickVisibleButton(page, "Outreach");
-  const parkCard = await firstVisible(page.locator("article").filter({ hasText: "Park Manor Westchase" }), "Park Manor Westchase card");
-  await parkCard.getByText("Park Manor Westchase").waitFor();
+  const textFirstCard = await firstVisible(page.getByTestId("text-first-card"), "Text First card");
+  await textFirstCard.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
 
   const before = await storedState(page);
   const beforeTextedCount = before.outreachLogs.filter(
-    (log) => log.facilityId === "park-manor-westchase" && log.status === "texted",
+    (log) => log.facilityId === "encompass-westchase" && log.status === "texted",
   ).length;
 
-  await clickVisibleButton(parkCard, "Text");
-  await page.getByText("Choose text contact").waitFor();
-  const picker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
-  await picker.getByText("Maria", { exact: true }).waitFor();
-  await picker.getByText("Ken", { exact: true }).waitFor();
-  await picker.getByText("Recommended", { exact: true }).waitFor();
-  await picker.getByText("Needs real phone", { exact: true }).first().waitFor();
-  await clickVisibleButton(picker, "Ken");
+  await clickVisibleButton(textFirstCard, "Text");
 
   await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
   await page.getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.").first().waitFor();
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
   const blockedState = await storedState(page);
   assert.equal(
-    blockedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    blockedState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
     beforeTextedCount,
     "placeholder contacts must not log Texted today",
   );
 
-  await page.getByLabel("Phone for Ken").first().fill("713-867-5309");
+  await page.getByLabel("Phone for Lisa").first().fill("713-867-5309");
   await waitForStoredState(
     page,
     (state) =>
       state.facilities
-        .find((facility) => facility.id === "park-manor-westchase")
-        ?.contacts.find((contact) => contact.id === "c-westchase-ken")?.phone === "713-867-5309",
+        .find((facility) => facility.id === "encompass-westchase")
+        ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "713-867-5309",
     "edited phone persisted",
   );
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
   const editedState = await storedState(page);
   assert.equal(
-    editedState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    editedState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
     beforeTextedCount,
     "editing a placeholder phone must not unlock manual Texted today logging before retry",
   );
 
   await clickVisibleButton(page, "Open Messages");
-  const updatedPicker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
-  await updatedPicker.getByText("Ken", { exact: true }).waitFor();
-  await clickVisibleButton(updatedPicker, "Ken");
 
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
@@ -110,7 +100,7 @@ try {
     .waitFor();
   const fallbackState = await storedState(page);
   assert.equal(
-    fallbackState.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length,
+    fallbackState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
     beforeTextedCount,
     "desktop fallback must not log Texted today before explicit confirmation",
   );
@@ -119,12 +109,12 @@ try {
   const after = await waitForStoredState(
     page,
     (state) =>
-      state.outreachLogs.filter((log) => log.facilityId === "park-manor-westchase" && log.status === "texted").length ===
+      state.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length ===
       beforeTextedCount + 1,
     "manual texted confirmation",
   );
-  const latest = after.outreachLogs.find((log) => log.facilityId === "park-manor-westchase" && log.status === "texted");
-  assert.equal(latest.contactName, "Ken");
+  const latest = after.outreachLogs.find((log) => log.facilityId === "encompass-westchase" && log.status === "texted");
+  assert.equal(latest.contactName, "Lisa");
 
   console.log("Open Messages fallback browser validation passed.");
 } finally {

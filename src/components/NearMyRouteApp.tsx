@@ -52,6 +52,7 @@ import {
 } from "@/lib/todayStatus";
 import {
   outreachReasonLabels,
+  hasAddOnOpportunity,
   selectTextFirst,
   sortOutreachQueue,
   textReadiness,
@@ -1380,8 +1381,12 @@ export default function NearMyRouteApp() {
     }));
   const textFirstItem = selectTextFirst(todayQueue);
   const remainingQueue = todayQueue.filter((item) => item.facility.id !== textFirstItem?.facility.id);
-  const readyToTextQueue = remainingQueue.filter((item) => item.status === "not_contacted" && textReadiness(item.facility) === "ready");
-  const needsPhoneQueue = remainingQueue.filter((item) => item.status === "not_contacted" && textReadiness(item.facility) !== "ready");
+  const readyToTextQueue = remainingQueue.filter(
+    (item) => item.status === "not_contacted" && hasAddOnOpportunity(item) && textReadiness(item.facility) === "ready",
+  );
+  const needsPhoneQueue = remainingQueue.filter(
+    (item) => item.status === "not_contacted" && hasAddOnOpportunity(item) && textReadiness(item.facility) !== "ready",
+  );
   const responseQueue = remainingQueue.filter((item) => item.status !== "not_contacted");
   const todayCounts = todayStatusSummary([...todayStatusByFacilityId.values()]);
   const currentRouteStatusCounts = todayStatusSummary(

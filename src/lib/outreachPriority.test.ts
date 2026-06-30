@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initialFacilities } from "./mockData";
-import { outreachReasonLabels, selectTextFirst, sortOutreachQueue, textReadiness, type OutreachQueueItem } from "./outreachPriority";
+import { hasAddOnOpportunity, outreachReasonLabels, selectTextFirst, sortOutreachQueue, textReadiness, type OutreachQueueItem } from "./outreachPriority";
 import type { Facility } from "./types";
 
 function facility(id: string, patch: Partial<Facility> = {}) {
@@ -26,6 +26,10 @@ function item(facility: Facility, status: OutreachQueueItem["status"], addedDriv
       group: "Best Add-ons",
     },
   };
+}
+
+function routeStopItem(facility: Facility, status: OutreachQueueItem["status"]): OutreachQueueItem {
+  return { facility, status };
 }
 
 test("textReadiness distinguishes ready, placeholder, and missing phone contacts", () => {
@@ -54,6 +58,30 @@ test("selectTextFirst chooses the best ready not-contacted option before placeho
   ]);
 
   assert.equal(selected?.facility.id, "encompass-westchase");
+});
+
+test("selectTextFirst excludes current-route facilities without add-on opportunities", () => {
+  const scheduledReady = facility("memorial-snf", {
+    contacts: [{ id: "ready-scheduled", name: "Amy", phone: "713-867-5309", primary: true }],
+  });
+  const addOnCandidate = facility("encompass-westchase", {
+    contacts: [{ id: "ready-addon", name: "Lisa", phone: "713-867-5309", primary: true }],
+  });
+
+  const selected = selectTextFirst([
+    routeStopItem(scheduledReady, "not_contacted"),
+    item(addOnCandidate, "not_contacted", 8),
+  ]);
+
+  assert.equal(selected?.facility.id, "encompass-westchase");
+});
+
+test("hasAddOnOpportunity separates route stops from outreach add-on candidates", () => {
+  const scheduled = routeStopItem(facility("memorial-snf"), "not_contacted");
+  const candidate = item(facility("encompass-westchase"), "not_contacted", 3);
+
+  assert.equal(hasAddOnOpportunity(scheduled), false);
+  assert.equal(hasAddOnOpportunity(candidate), true);
 });
 
 test("sortOutreachQueue puts possible add-ons first, then route-useful not-contacted work", () => {

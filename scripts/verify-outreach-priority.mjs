@@ -54,9 +54,26 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await waitForStoredState(page, (state) => Array.isArray(state.facilities), "hydrated defaults");
 
+  await page.evaluate((key) => {
+    const state = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    state.facilities = state.facilities.map((facility) =>
+      facility.id === "memorial-snf"
+        ? {
+            ...facility,
+            contacts: facility.contacts.map((contact) =>
+              contact.id === "c-memorial-amy" ? { ...contact, phone: "713-867-5309" } : contact,
+            ),
+          }
+        : facility,
+    );
+    window.localStorage.setItem(key, JSON.stringify(state));
+  }, storageKey);
+  await page.reload({ waitUntil: "networkidle" });
+
   await clickVisible(page, "Outreach");
   const textFirst = await firstVisible(page.getByTestId("text-first-card"), "Text First card");
   await textFirst.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
+  assert.equal(await textFirst.getByText("Memorial SNF").count(), 0);
   await textFirst.getByText("+3 min detour").waitFor();
   assert.ok(await textFirst.getByText("Needs real phone").count() > 0);
   assert.ok(await textFirst.getByText("Same-day friendly").count() > 0);
@@ -64,6 +81,7 @@ try {
 
   const readyQueue = page.getByTestId("ready-to-text-queue");
   assert.equal(await readyQueue.getByText("Encompass Rehab Westchase").count(), 0);
+  assert.equal(await readyQueue.getByText("Memorial SNF").count(), 0);
   await page.getByText("Needs phone before texting").first().waitFor();
 
   await clickVisible(textFirst, "Text");
