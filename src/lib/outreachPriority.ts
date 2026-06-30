@@ -27,6 +27,10 @@ export function textReadiness(facility: Facility): TextReadiness {
   return contacts.some((contact) => !isPlaceholderPhoneNumber(contact.phone)) ? "ready" : "needs_real_phone";
 }
 
+export function hasAddOnOpportunity(item: OutreachQueueItem) {
+  return Boolean(item.opportunity);
+}
+
 function routeUsefulness(item: OutreachQueueItem) {
   const opportunity = item.opportunity;
   const facility = item.facility;
@@ -78,7 +82,9 @@ export function sortOutreachQueue(items: OutreachQueueItem[]) {
 }
 
 export function selectTextFirst(items: OutreachQueueItem[]) {
-  const candidates = items.filter((item) => item.status === "not_contacted" && !item.facility.doNotContact);
+  const candidates = items.filter(
+    (item) => item.status === "not_contacted" && !item.facility.doNotContact && hasAddOnOpportunity(item),
+  );
   const ready = candidates.filter((item) => textReadiness(item.facility) === "ready");
   return sortOutreachQueue(ready.length > 0 ? ready : candidates)[0];
 }
