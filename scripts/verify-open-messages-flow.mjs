@@ -17,6 +17,15 @@ async function clickVisibleButton(pageOrLocator, name) {
   throw new Error(`No visible button named ${String(name)}`);
 }
 
+async function firstVisible(locator, label) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const item = locator.nth(index);
+    if (await item.isVisible()) return item;
+  }
+  throw new Error(`No visible locator found: ${label}`);
+}
+
 async function storedState(page) {
   return page.evaluate((key) => {
     const raw = window.localStorage.getItem(key);
@@ -46,7 +55,7 @@ try {
   await waitForStoredState(page, (state) => Array.isArray(state.outreachLogs), "hydrated defaults");
 
   await clickVisibleButton(page, "Outreach");
-  const parkCard = page.locator("article").filter({ hasText: "Park Manor Westchase" }).first();
+  const parkCard = await firstVisible(page.locator("article").filter({ hasText: "Park Manor Westchase" }), "Park Manor Westchase card");
   await parkCard.getByText("Park Manor Westchase").waitFor();
 
   const before = await storedState(page);
