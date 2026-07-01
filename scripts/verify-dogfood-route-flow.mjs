@@ -284,7 +284,7 @@ try {
       if (!raw) throw new Error("No stored dogfood state to seed");
       window.localStorage.setItem(key, JSON.stringify({ ...JSON.parse(raw), dogfoodNotes: unsafeNote }));
     },
-    { key: storageKey, unsafeNote: "Patient DOB 1/2/1940 was previously saved." },
+    { key: storageKey, unsafeNote: "John Smith appeared in the pasted schedule." },
   );
   await page.reload({ waitUntil: "networkidle" });
   await firstVisible(

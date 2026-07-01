@@ -12,10 +12,16 @@ const phiPatterns = [
   /\bNPO\b/i,
 ];
 
+const commonPersonNamePattern =
+  /\b(?:Amy|Angela|Ashley|Barbara|Betty|Carol|Charles|Christopher|Daniel|David|Deborah|Donna|Donald|Dorothy|Edward|Elizabeth|Emily|George|James|Jennifer|Jessica|John|Joseph|Karen|Kenneth|Ken|Kimberly|Lisa|Linda|Maria|Mark|Mary|Michael|Michelle|Nancy|Patricia|Richard|Robert|Sarah|Susan|Thomas|William)\s+[A-Z][a-z]{1,}\b/;
+
 export function dogfoodNotePhiWarning(note: string) {
   const trimmed = note.trim();
   if (!trimmed) return undefined;
   if (phiPatterns.some((pattern) => pattern.test(trimmed))) {
+    return "Dogfood notes must stay workflow-only. Remove patient names, clinical details, DOBs, MRNs, or diagnoses before saving.";
+  }
+  if (commonPersonNamePattern.test(trimmed)) {
     return "Dogfood notes must stay workflow-only. Remove patient names, clinical details, DOBs, MRNs, or diagnoses before saving.";
   }
   if (/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(trimmed)) {

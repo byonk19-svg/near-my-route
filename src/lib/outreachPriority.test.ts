@@ -147,3 +147,16 @@ test("outreachReasonLabels does not claim primary ready when only a secondary ph
   assert.equal(labels.includes("Primary SLP ready"), false);
   assert.equal(labels.includes("Phone ready"), true);
 });
+
+test("outreachReasonLabels does not claim primary ready when the primary phone is invalid", () => {
+  const mixedContacts = facility("park-manor-westchase", {
+    contacts: [
+      { id: "primary", name: "Maria", phone: "abc", primary: true },
+      { id: "secondary", name: "Ken", phone: "713-867-5309" },
+    ],
+  });
+  const labels = outreachReasonLabels(item(mixedContacts, "not_contacted", 3));
+
+  assert.equal(labels.includes("Primary SLP ready"), false);
+  assert.equal(labels.includes("Phone ready"), true);
+});

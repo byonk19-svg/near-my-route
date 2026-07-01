@@ -10,4 +10,5 @@ test("dogfoodNotePhiWarning blocks obvious patient and clinical details", () => 
   assert.match(dogfoodNotePhiWarning("Patient had dysphagia and was NPO.") ?? "", /workflow-only/);
   assert.match(dogfoodNotePhiWarning("MRN 12345 was on the pasted schedule.") ?? "", /workflow-only/);
   assert.match(dogfoodNotePhiWarning("DOB 1/2/1940 appeared in the route text.") ?? "", /workflow-only/);
+  assert.match(dogfoodNotePhiWarning("John Smith appeared in the pasted schedule.") ?? "", /workflow-only/);
 });
