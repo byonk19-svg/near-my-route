@@ -28,6 +28,7 @@ import {
   canAttemptSms,
   formatDaysAgo,
   friendlyValue,
+  isDialablePhoneNumber,
   isPlaceholderPhoneNumber,
   primaryContact,
   safeMessage,
@@ -59,6 +60,7 @@ import {
   textReadiness,
   type OutreachQueueItem,
 } from "@/lib/outreachPriority";
+import { dogfoodNotePhiWarning } from "@/lib/privacy";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -121,7 +123,7 @@ type OpportunitySnapshot = {
   reasonBadges: string[];
 };
 
-type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone" | "placeholder_phone";
+type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone" | "placeholder_phone" | "invalid_phone";
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -351,12 +353,14 @@ function BestAddOnCard({
 function DogfoodChecklist({
   checked,
   notes,
+  notesWarning,
   className,
   onToggle,
   onNotesChange,
 }: {
   checked: Record<string, boolean>;
   notes: string;
+  notesWarning?: string;
   className?: string;
   onToggle: (taskId: string, checked: boolean) => void;
   onNotesChange: (notes: string) => void;
@@ -396,6 +400,11 @@ function DogfoodChecklist({
           className="mt-1 min-h-24 w-full resize-y rounded-md border border-slate-200 p-2 text-sm font-medium normal-case text-slate-900"
         />
       </label>
+      {notesWarning ? (
+        <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold normal-case text-red-800">
+          {notesWarning}
+        </p>
+      ) : null}
       <p className="mt-2 text-xs font-semibold text-slate-500">
         Capture workflow friction, not patient details.
       </p>
@@ -415,6 +424,7 @@ function DetailDrawer({
   onStartText,
   onCopyMessage,
   onMarkTexted,
+  onClearDoNotContact,
   onUpdateContactPhone,
   onLogStatus,
   onAddRoute,
@@ -434,6 +444,7 @@ function DetailDrawer({
   onStartText: () => void;
   onCopyMessage: () => void;
   onMarkTexted: () => void;
+  onClearDoNotContact: () => void;
   onUpdateContactPhone: (contactId: string, phone: string) => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
   onAddRoute: () => void;
@@ -600,7 +611,11 @@ function DetailDrawer({
           >
             Do not contact
           </Button>
-        ) : null}
+        ) : (
+          <Button className="mt-2 w-full" onClick={onClearDoNotContact}>
+            <RotateCcw size={15} /> Clear do not contact
+          </Button>
+        )}
       </section>
 
       {canContact || opportunity ? (
@@ -660,6 +675,11 @@ function DetailDrawer({
               This contact still has a placeholder 555 number. Edit the phone number before opening Messages.
             </p>
           ) : null}
+          {copyFeedback === "invalid_phone" ? (
+            <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+              This contact does not have a dialable phone number. Enter a real phone number before opening Messages.
+            </p>
+          ) : null}
           {copyFeedback === "failed" ? (
             <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
               Clipboard was blocked. The message is visible above so you can copy it manually.
@@ -668,7 +688,7 @@ function DetailDrawer({
           <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
             <Clipboard size={15} /> Copy message
           </Button>
-          {copyFeedback !== "placeholder_phone" ? (
+          {copyFeedback !== "placeholder_phone" && copyFeedback !== "invalid_phone" ? (
             <Button className="mt-2 w-full" onClick={onMarkTexted}>
               <Check size={15} /> Mark texted
             </Button>
@@ -731,7 +751,7 @@ function ContactSetupPanel({
     readiness === "ready"
       ? `Phone ready${readyContact ? ` for ${readyContact.name}` : ""}.`
       : readiness === "needs_real_phone"
-        ? "Replace placeholder numbers before texting."
+        ? "Replace placeholder or invalid numbers before texting."
         : "Add a phone-capable contact before texting.";
 
   return (
@@ -760,7 +780,15 @@ function ContactSetupPanel({
                 />
                 Recommended
               </label>
-              {isPlaceholderPhoneNumber(contact.phone) ? <Badge tone="orange">Placeholder phone</Badge> : contact.phone ? <Badge tone="green">Phone ready</Badge> : <Badge tone="orange">No phone</Badge>}
+              {isPlaceholderPhoneNumber(contact.phone) ? (
+                <Badge tone="orange">Placeholder phone</Badge>
+              ) : contact.phone && !isDialablePhoneNumber(contact.phone) ? (
+                <Badge tone="orange">Invalid phone</Badge>
+              ) : contact.phone ? (
+                <Badge tone="green">Phone ready</Badge>
+              ) : (
+                <Badge tone="orange">No phone</Badge>
+              )}
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <label className="text-[11px] font-bold uppercase text-slate-500">
@@ -1422,6 +1450,7 @@ export default function NearMyRouteApp() {
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
   const [dogfoodChecked, setDogfoodChecked] = useState<Record<string, boolean>>({});
   const [dogfoodNotes, setDogfoodNotes] = useState("");
+  const [dogfoodNoteWarning, setDogfoodNoteWarning] = useState<string>();
   const [showMessage, setShowMessage] = useState(false);
   const [copyFeedbackByFacilityId, setCopyFeedbackByFacilityId] = useState<Record<string, TextFeedback>>({});
   const [textPickerFacilityId, setTextPickerFacilityId] = useState<string>();
@@ -1442,7 +1471,9 @@ export default function NearMyRouteApp() {
         setRouteStops(stored.routeStops);
         setOutreachLogs(stored.outreachLogs);
         setDogfoodChecked(stored.dogfoodChecked ?? {});
-        setDogfoodNotes(stored.dogfoodNotes ?? "");
+        const storedDogfoodWarning = dogfoodNotePhiWarning(stored.dogfoodNotes ?? "");
+        setDogfoodNoteWarning(storedDogfoodWarning);
+        setDogfoodNotes(storedDogfoodWarning ? "" : (stored.dogfoodNotes ?? ""));
         setHydrated(true);
       });
     } else {
@@ -1647,8 +1678,8 @@ export default function NearMyRouteApp() {
         item.id === facilityId
           ? {
               ...item,
-              lastContacted: todayIsoDate(),
-              doNotContact: status === "do_not_contact" ? true : item.doNotContact,
+              lastContacted: status === "do_not_contact_cleared" ? item.lastContacted : todayIsoDate(),
+              doNotContact: status === "do_not_contact" ? true : status === "do_not_contact_cleared" ? false : item.doNotContact,
             }
           : item,
       ),
@@ -1662,8 +1693,21 @@ export default function NearMyRouteApp() {
     setShowMessage(false);
   }
 
+  function clearDoNotContact(facilityId: string) {
+    logOutreach(facilityId, "do_not_contact_cleared", "other", "Cleared do not contact; facility can return to outreach.");
+    setSelectedFacilityId(facilityId);
+    setShowMessage(false);
+  }
+
   function updateDogfoodTask(taskId: string, checked: boolean) {
     setDogfoodChecked((current) => ({ ...current, [taskId]: checked }));
+  }
+
+  function updateDogfoodNotes(notes: string) {
+    const warning = dogfoodNotePhiWarning(notes);
+    setDogfoodNoteWarning(warning);
+    if (warning) return;
+    setDogfoodNotes(notes);
   }
 
   function updateReviewRow(rowId: string, patch: Partial<ImportReviewRow>) {
@@ -1698,7 +1742,7 @@ export default function NearMyRouteApp() {
       ),
     );
     setCopyFeedbackByFacilityId((current) => {
-      if (current[facilityId] === "placeholder_phone") return current;
+      if (current[facilityId] === "placeholder_phone" || current[facilityId] === "invalid_phone") return current;
       const next = { ...current };
       delete next[facilityId];
       return next;
@@ -1780,7 +1824,7 @@ export default function NearMyRouteApp() {
       return;
     }
 
-    const readyContacts = contacts.filter((contact) => !isPlaceholderPhoneNumber(contact.phone));
+    const readyContacts = textReadyContacts(facility);
     const recommendedReadyContacts = readyContacts.filter((contact) => contact.primary);
     const directContact = recommendedReadyContacts.length === 1 ? recommendedReadyContacts[0] : readyContacts.length === 1 ? readyContacts[0] : undefined;
 
@@ -1810,6 +1854,12 @@ export default function NearMyRouteApp() {
       openFacilityReview(facilityId, true, activeTab);
       return;
     }
+    if (!isDialablePhoneNumber(contact.phone)) {
+      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "invalid_phone" }));
+      openFacilityReview(facilityId, true, activeTab);
+      return;
+    }
 
     const canOpenSms = typeof navigator !== "undefined" && canAttemptSms(navigator.userAgent);
     if (!canOpenSms) {
@@ -1833,6 +1883,14 @@ export default function NearMyRouteApp() {
     if (!facility) return;
     const pendingContactId = pendingTextContactByFacilityId[facilityId];
     const contact = facility.contacts.find((item) => item.id === pendingContactId) ?? primaryContact(facility);
+    if (!contact?.phone || isPlaceholderPhoneNumber(contact.phone) || !isDialablePhoneNumber(contact.phone)) {
+      setCopyFeedbackByFacilityId((current) => ({
+        ...current,
+        [facilityId]: !contact?.phone ? "no_phone" : isPlaceholderPhoneNumber(contact.phone) ? "placeholder_phone" : "invalid_phone",
+      }));
+      setShowMessage(true);
+      return;
+    }
     logOutreach(facilityId, "texted", "text", "Manually marked texted after Messages fallback.", contact?.name);
     setShowMessage(false);
     setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "copied" }));
@@ -1951,6 +2009,7 @@ export default function NearMyRouteApp() {
     setCopyFeedbackByFacilityId({});
     setDogfoodChecked({});
     setDogfoodNotes("");
+    setDogfoodNoteWarning(undefined);
     setReviewRows([]);
     setScheduleText(sampleSchedule);
   }
@@ -2031,6 +2090,7 @@ export default function NearMyRouteApp() {
               onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
               onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
               onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+              onClearDoNotContact={() => selectedFacility && clearDoNotContact(selectedFacility.id)}
               onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
               onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
               onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
@@ -2180,6 +2240,11 @@ export default function NearMyRouteApp() {
               </div>
             </div>
 
+            {dogfoodNoteWarning ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800 lg:hidden">
+                {dogfoodNoteWarning}
+              </p>
+            ) : null}
             <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
               <summary className="cursor-pointer text-sm font-black text-slate-950">
                 Today route checklist ({dogfoodTasks.filter((task) => dogfoodChecked[task.id]).length}/{dogfoodTasks.length})
@@ -2188,9 +2253,10 @@ export default function NearMyRouteApp() {
                 <DogfoodChecklist
                   checked={dogfoodChecked}
                   notes={dogfoodNotes}
+                  notesWarning={dogfoodNoteWarning}
                   className="border-0 p-0"
                   onToggle={updateDogfoodTask}
-                  onNotesChange={setDogfoodNotes}
+                  onNotesChange={updateDogfoodNotes}
                 />
               </div>
             </details>
@@ -2198,8 +2264,9 @@ export default function NearMyRouteApp() {
               <DogfoodChecklist
                 checked={dogfoodChecked}
                 notes={dogfoodNotes}
+                notesWarning={dogfoodNoteWarning}
                 onToggle={updateDogfoodTask}
-                onNotesChange={setDogfoodNotes}
+                onNotesChange={updateDogfoodNotes}
               />
             </div>
 
@@ -2383,6 +2450,7 @@ export default function NearMyRouteApp() {
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
             onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
             onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onClearDoNotContact={() => selectedFacility && clearDoNotContact(selectedFacility.id)}
             onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
@@ -2544,6 +2612,7 @@ export default function NearMyRouteApp() {
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
             onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
             onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
+            onClearDoNotContact={() => selectedFacility && clearDoNotContact(selectedFacility.id)}
             onUpdateContactPhone={(contactId, phone) => selectedFacility && updateContactPhone(selectedFacility.id, contactId, phone)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}

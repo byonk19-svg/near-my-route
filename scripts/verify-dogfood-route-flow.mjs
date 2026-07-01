@@ -44,6 +44,19 @@ async function checkVisible(page, name) {
   throw new Error(`No visible checkbox named ${String(name)}`);
 }
 
+async function assertVisibleChecked(page, name) {
+  const checkboxes = page.getByRole("checkbox", { name });
+  const count = await checkboxes.count();
+  for (let index = 0; index < count; index += 1) {
+    const checkbox = checkboxes.nth(index);
+    if (await checkbox.isVisible()) {
+      assert.equal(await checkbox.isChecked(), true, `${String(name)} should stay checked after reload`);
+      return;
+    }
+  }
+  throw new Error(`No visible checkbox named ${String(name)}`);
+}
+
 async function fillVisibleTextbox(page, name, value) {
   const textboxes = page.getByRole("textbox", { name });
   const count = await textboxes.count();
@@ -209,6 +222,99 @@ try {
     (nextState) => nextState.dogfoodNotes === "PHI-free dogfood route passed automated workflow coverage.",
     "dogfood notes saved",
   );
+
+  await page.reload({ waitUntil: "networkidle" });
+  state = await waitForStoredState(
+    page,
+    (nextState) =>
+      (nextState.routeStops ?? []).map((stop) => stop.facilityId).join(",") ===
+        "memorial-snf,park-manor-westchase,lakeside-rehab" &&
+      countLogs(nextState, "encompass-westchase", "texted") === beforeTextedCount + 1 &&
+      countLogs(nextState, "encompass-westchase", "possible_add_on") >= 1 &&
+      nextState.facilities
+        .find((facility) => facility.id === "encompass-westchase")
+        ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "713-867-5309" &&
+      nextState.dogfoodNotes === "PHI-free dogfood route passed automated workflow coverage." &&
+      Object.values(nextState.dogfoodChecked ?? {}).every(Boolean),
+    "dogfood state restored after reload",
+  );
+  assert.equal(Object.keys(state.dogfoodChecked ?? {}).length, 7, "all checklist items should persist");
+
+  await page.getByRole("heading", { name: "Tomorrow's Route" }).first().waitFor();
+  await page.getByText("Memorial SNF").first().waitFor();
+  await page.locator("summary").filter({ hasText: "Today route checklist" }).click();
+  for (const label of [
+    "Import tomorrow's route",
+    "Review text candidates",
+    "Log every reply",
+    "Add tentative stop",
+    "Remove tentative stop if needed",
+    "Open Google Maps",
+    "Capture friction",
+  ]) {
+    await assertVisibleChecked(page, label);
+  }
+  const notes = page.getByRole("textbox", { name: "Dogfood notes" });
+  const notesCount = await notes.count();
+  let foundPersistedNotes = false;
+  for (let index = 0; index < notesCount; index += 1) {
+    const note = notes.nth(index);
+    if ((await note.isVisible()) && (await note.inputValue()) === "PHI-free dogfood route passed automated workflow coverage.") {
+      foundPersistedNotes = true;
+      break;
+    }
+  }
+  assert.equal(foundPersistedNotes, true, "dogfood notes should stay visible after reload");
+
+  await fillVisibleTextbox(page, "Dogfood notes", "Patient DOB 1/2/1940 was pasted by mistake.");
+  await page
+    .getByText("Dogfood notes must stay workflow-only. Remove patient names, clinical details, DOBs, MRNs, or diagnoses before saving.")
+    .first()
+    .waitFor();
+  state = await storedState(page);
+  assert.equal(
+    state.dogfoodNotes,
+    "PHI-free dogfood route passed automated workflow coverage.",
+    "PHI-like dogfood notes should not overwrite the safe persisted note",
+  );
+
+  await page.evaluate(
+    ({ key, unsafeNote }) => {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) throw new Error("No stored dogfood state to seed");
+      window.localStorage.setItem(key, JSON.stringify({ ...JSON.parse(raw), dogfoodNotes: unsafeNote }));
+    },
+    { key: storageKey, unsafeNote: "Patient DOB 1/2/1940 was previously saved." },
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await firstVisible(
+    page.getByText("Dogfood notes must stay workflow-only. Remove patient names, clinical details, DOBs, MRNs, or diagnoses before saving."),
+    "legacy PHI-like dogfood note warning",
+  );
+  state = await waitForStoredState(
+    page,
+    (nextState) => nextState.dogfoodNotes === "",
+    "legacy PHI-like dogfood note cleared during hydration",
+  );
+  assert.equal(state.dogfoodNotes, "", "legacy PHI-like dogfood notes should be removed from persisted state");
+
+  await clickVisible(page, "Facilities");
+  await page.getByPlaceholder("Search by name or address").fill("Northwest");
+  await page.getByRole("heading", { name: "Northwest Care Center" }).waitFor();
+  await clickVisible(page, "Review fit");
+  await page.getByText("Do not contact").first().waitFor();
+  await clickVisible(page, "Clear do not contact");
+  state = await waitForStoredState(
+    page,
+    (nextState) => {
+      const facility = nextState.facilities.find((item) => item.id === "inactive-northwest");
+      const latest = nextState.outreachLogs.find((log) => log.facilityId === "inactive-northwest");
+      return facility?.doNotContact === false && latest?.status === "do_not_contact_cleared";
+    },
+    "do-not-contact cleared",
+  );
+  assert.equal(state.facilities.find((item) => item.id === "inactive-northwest")?.doNotContact, false);
+  await page.getByText("Not contacted").first().waitFor();
 
   console.log("Dogfood route browser validation passed.");
 } finally {

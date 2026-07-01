@@ -37,10 +37,14 @@ test("textReadiness distinguishes ready, placeholder, and missing phone contacts
     contacts: [{ id: "ready", name: "Lisa", phone: "713-867-5309", primary: true }],
   });
   const placeholder = facility("park-manor-westchase");
+  const invalid = facility("encompass-westchase", {
+    contacts: [{ id: "invalid", name: "Lisa", phone: "abc", primary: true }],
+  });
   const missing = facility("encompass-westchase", { contacts: [] });
 
   assert.equal(textReadiness(ready), "ready");
   assert.equal(textReadiness(placeholder), "needs_real_phone");
+  assert.equal(textReadiness(invalid), "needs_real_phone");
   assert.equal(textReadiness(missing), "no_phone");
 });
 

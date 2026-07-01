@@ -66,7 +66,8 @@ export type OutreachStatus =
   | "possible_add_on"
   | "added_to_route"
   | "follow_up_later"
-  | "do_not_contact";
+  | "do_not_contact"
+  | "do_not_contact_cleared";
 
 export type OutreachLog = {
   id: string;

@@ -19,7 +19,7 @@ export function textContacts(facility: Facility) {
 }
 
 export function textReadyContacts(facility: Facility) {
-  return textContacts(facility).filter((contact) => !isPlaceholderPhoneNumber(contact.phone));
+  return textContacts(facility).filter((contact) => isDialablePhoneNumber(contact.phone) && !isPlaceholderPhoneNumber(contact.phone));
 }
 
 export function normalizePhoneForSms(phone: string) {
@@ -33,6 +33,19 @@ export function isPlaceholderPhoneNumber(phone?: string) {
   const normalized = normalizePhoneForSms(phone).replace(/^\+/, "");
   const nationalNumber = normalized.startsWith("1") && normalized.length > 7 ? normalized.slice(1) : normalized;
   return nationalNumber.startsWith("555") || nationalNumber.slice(3, 6) === "555";
+}
+
+export function isDialablePhoneNumber(phone?: string) {
+  if (!phone?.trim()) return false;
+  const trimmed = phone.trim();
+  if (!/^[\d\s()+.-]+$/.test(trimmed)) return false;
+  const normalized = normalizePhoneForSms(trimmed);
+  const digits = normalized.replace(/^\+/, "");
+  if (!/^\+?\d+$/.test(normalized)) return false;
+  if (normalized.startsWith("+")) return digits.length >= 8 && digits.length <= 15;
+  if (digits.length === 10) return true;
+  if (digits.length === 11 && digits.startsWith("1")) return true;
+  return false;
 }
 
 export function buildSmsUrl(phone: string, message = OUTREACH_MESSAGE) {

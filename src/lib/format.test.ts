@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSmsUrl, canAttemptSms, isPlaceholderPhoneNumber, OUTREACH_MESSAGE, phoneContacts, safeMessage, textContacts, textReadyContacts } from "./format";
+import {
+  buildSmsUrl,
+  canAttemptSms,
+  isDialablePhoneNumber,
+  isPlaceholderPhoneNumber,
+  OUTREACH_MESSAGE,
+  phoneContacts,
+  safeMessage,
+  textContacts,
+  textReadyContacts,
+} from "./format";
 import { initialFacilities } from "./mockData";
 
 test("safeMessage returns the approved PHI-safe outreach template", () => {
@@ -40,6 +50,21 @@ test("textContacts honors preferred method and textReadyContacts excludes placeh
   assert.deepEqual(textReadyContacts(withReadySecondary), []);
 });
 
+test("textReadyContacts excludes invalid non-dialable phone values", () => {
+  const facility = initialFacilities.find((item) => item.id === "encompass-westchase");
+  assert.ok(facility);
+  const invalid = {
+    ...facility,
+    contacts: [{ id: "invalid", name: "Lisa", phone: "abc", preferredMethod: "text" as const, primary: true }],
+  };
+
+  assert.deepEqual(
+    textContacts(invalid).map((contact) => contact.id),
+    ["invalid"],
+  );
+  assert.deepEqual(textReadyContacts(invalid), []);
+});
+
 test("buildSmsUrl normalizes phone numbers and encodes the message body", () => {
   const url = buildSmsUrl("(555) 014-4", safeMessage());
 
@@ -54,6 +79,16 @@ test("isPlaceholderPhoneNumber flags fictional 555 contact data", () => {
   assert.equal(isPlaceholderPhoneNumber("713-555-0144"), true);
   assert.equal(isPlaceholderPhoneNumber("713-867-5309"), false);
   assert.equal(isPlaceholderPhoneNumber(undefined), false);
+});
+
+test("isDialablePhoneNumber accepts normal phone formats and rejects invalid text", () => {
+  assert.equal(isDialablePhoneNumber("713-867-5309"), true);
+  assert.equal(isDialablePhoneNumber("+1 (713) 867-5309"), true);
+  assert.equal(isDialablePhoneNumber("+44 20 7946 0958"), true);
+  assert.equal(isDialablePhoneNumber("abc"), false);
+  assert.equal(isDialablePhoneNumber("abc7138675309"), false);
+  assert.equal(isDialablePhoneNumber("12345"), false);
+  assert.equal(isDialablePhoneNumber(undefined), false);
 });
 
 test("canAttemptSms only enables the Messages handoff for mobile user agents", () => {
