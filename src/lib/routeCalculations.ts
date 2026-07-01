@@ -1,4 +1,5 @@
 import type { Facility, Opportunity, OpportunityOptions, RouteStop } from "./types";
+import { hasConfirmedLocation } from "./locationTrust";
 
 const EARTH_RADIUS_MILES = 3958.8;
 const URBAN_ROAD_FACTOR = 1.7;
@@ -90,10 +91,11 @@ export function calculateRouteOpportunities(
     .filter((facility): facility is Facility => Boolean(facility));
   const routeFacilityIds = new Set(orderedStops.map((stop) => stop.facilityId));
 
-  if (routeFacilities.length === 0) return [];
+  if (routeFacilities.length === 0 || routeFacilities.some((facility) => !hasConfirmedLocation(facility))) return [];
 
   return facilities
     .filter((facility) => !routeFacilityIds.has(facility.id))
+    .filter((facility) => hasConfirmedLocation(facility))
     .filter((facility) => !options.knownContactsOnly || facility.contacts.length > 0)
     .filter(
       (facility) =>
@@ -188,7 +190,7 @@ export function calculateRouteOpportunities(
         group: groupForMinutes(addedDriveMinutes),
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || a.addedDriveMinutes - b.addedDriveMinutes || a.facility.name.localeCompare(b.facility.name));
 }
 
 export function routeLineFacilities(routeStops: RouteStop[], facilities: Facility[]) {

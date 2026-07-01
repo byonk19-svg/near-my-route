@@ -161,6 +161,7 @@ async function runGuardrailPath(page) {
   assert.equal(await cypressCard.getByLabel("Existing facility").isVisible(), true);
   assert.equal(await cypressCard.getByLabel("Edit address").isVisible(), true);
   await cypressCard.locator("select").first().selectOption("create_new");
+  await page.getByText("New facility locations must be confirmed before add-on ranking.").first().waitFor();
   assert.equal(await page.getByText("Resolve uncertain rows before confirming.").count(), 0);
 
   const confirm = page.getByRole("button", { name: "Confirm 1 Stop" }).first();
@@ -176,6 +177,10 @@ async function runGuardrailPath(page) {
     "single explicit create-new import",
   );
   assert.equal(state.routeStops.length, 1);
+  const newFacility = state.facilities.find((facility) => facility.name === "Cypress Care");
+  assert.equal(newFacility?.locationStatus, "needs_confirmation");
+  assert.equal(newFacility?.locationSource, "import");
+  assert.match(newFacility?.notes ?? "", /Confirm location/);
 }
 
 async function runDesktopGuardrailCheck(page) {

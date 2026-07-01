@@ -61,6 +61,7 @@ import {
   type OutreachQueueItem,
 } from "@/lib/outreachPriority";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
+import { hasConfirmedLocation, unconfirmedRouteFacilities } from "@/lib/locationTrust";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -526,6 +527,12 @@ function DetailDrawer({
           <dd className="font-bold text-slate-900">{friendlyValue(facility.typicalVolume)}</dd>
         </div>
       </dl>
+
+      {!hasConfirmedLocation(facility) ? (
+        <p className="mt-4 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+          Location needs confirmation before route ranking.
+        </p>
+      ) : null}
 
       <section className="mt-5">
         <h3 className="text-sm font-black text-slate-900">Contacts</h3>
@@ -1572,6 +1579,12 @@ export default function NearMyRouteApp() {
       ? `Resolve ${importSummary.unresolved} ${importSummary.unresolved === 1 ? "Row" : "Rows"} Before Confirming`
       : `Confirm ${importSummary.confirmed} ${importSummary.confirmed === 1 ? "Stop" : "Stops"}`;
   const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
+  const currentRouteUnconfirmedFacilities = unconfirmedRouteFacilities(orderedRouteStops, facilities);
+  const currentRouteLocationWarning =
+    currentRouteUnconfirmedFacilities.length > 0
+      ? `Route includes unconfirmed locations: ${currentRouteUnconfirmedFacilities.map((facility) => facility.name).join(", ")}. Confirm location before trusting add-on ranking or Maps handoff.`
+      : undefined;
+  const isCurrentRouteMapsBlocked = Boolean(currentRouteLocationWarning);
   const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
   const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
   const currentRouteSplitUrls = splitGoogleMapsDirectionsUrls(currentRouteFacilities);
@@ -2190,8 +2203,8 @@ export default function NearMyRouteApp() {
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s Route</h2>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => openMapsUrl(currentRouteMapsUrl)}>
-                    <ExternalLink size={15} /> Open in Google Maps
+                  <Button disabled={isCurrentRouteMapsBlocked} onClick={() => openMapsUrl(currentRouteMapsUrl)}>
+                    <ExternalLink size={15} /> {isCurrentRouteMapsBlocked ? "Confirm locations for Maps" : "Open in Google Maps"}
                   </Button>
                   <Button onClick={() => selectTopLevelTab("Import Schedule")}>
                     <Clipboard size={15} /> Import Schedule
@@ -2203,10 +2216,15 @@ export default function NearMyRouteApp() {
                   {currentRouteMapsWarning}
                 </p>
               ) : null}
+              {currentRouteLocationWarning ? (
+                <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                  {currentRouteLocationWarning}
+                </p>
+              ) : null}
               {currentRouteSplitUrls.length > 0 ? (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {currentRouteSplitUrls.map((url, index) => (
-                    <Button key={url} onClick={() => openMapsUrl(url)}>
+                    <Button key={url} disabled={isCurrentRouteMapsBlocked} onClick={() => openMapsUrl(url)}>
                       <ExternalLink size={15} /> Open leg {index + 1}
                     </Button>
                   ))}
@@ -2232,6 +2250,9 @@ export default function NearMyRouteApp() {
                         <span className="text-xs text-slate-500">
                           {stop.appointmentTime ?? "Time TBD"} - {stop.studyCount ?? 0} studies - {friendlyValue(stop.status)}
                         </span>
+                        {!hasConfirmedLocation(facility) ? (
+                          <span className="mt-1 block text-xs font-bold text-orange-700">Location needs confirmation</span>
+                        ) : null}
                       </span>
                       <Badge tone={todayStatusTone(status)}>{todayStatusLabel(status)}</Badge>
                     </button>
@@ -2680,6 +2701,11 @@ export default function NearMyRouteApp() {
                 Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, or skip the row.
               </div>
             ) : null}
+            {reviewRows.some((row) => row.action === "create_new") ? (
+              <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
+                New facility locations must be confirmed before add-on ranking.
+              </div>
+            ) : null}
             <div className="mt-4 lg:hidden">
               <Button
                 tone="primary"
@@ -2829,6 +2855,11 @@ export default function NearMyRouteApp() {
             <p className="mt-1 text-sm text-slate-500">
               Work today&apos;s facility responses first. Templates intentionally avoid PHI.
             </p>
+            {currentRouteLocationWarning ? (
+              <p className="mt-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                {currentRouteLocationWarning}
+              </p>
+            ) : null}
             <div className="mt-4">
               <TodayStatusStrip counts={todayCounts} />
             </div>

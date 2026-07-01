@@ -96,6 +96,9 @@ test("creates exactly one facility for an explicit valid create-new row", () => 
   assert.equal(result.facilities.length, initialFacilities.length + 1);
   assert.equal(result.routeStops.length, 1);
   assert.equal(result.facilities.at(-1)?.name, "Cypress Care");
+  assert.equal(result.facilities.at(-1)?.locationStatus, "needs_confirmation");
+  assert.equal(result.facilities.at(-1)?.locationSource, "import");
+  assert.match(result.facilities.at(-1)?.notes ?? "", /Confirm location/);
 });
 
 test("skipped and unresolved rows do not create route stops or facilities", () => {

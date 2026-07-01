@@ -9,6 +9,8 @@ export type FacilityType =
 export type SameDayFriendly = "yes" | "no" | "sometimes" | "unknown";
 export type TypicalVolume = "low" | "medium" | "high" | "unknown";
 export type PreferredMethod = "text" | "call" | "email";
+export type LocationStatus = "confirmed" | "needs_confirmation" | "failed";
+export type LocationSource = "seed" | "import" | "geocoded" | "fallback";
 
 export type FacilityContact = {
   id: string;
@@ -27,6 +29,8 @@ export type Facility = {
   city?: string;
   lat: number;
   lng: number;
+  locationStatus?: LocationStatus;
+  locationSource?: LocationSource;
   facilityType?: FacilityType;
   groupTag?: string;
   contacts: FacilityContact[];
