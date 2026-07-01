@@ -1,4 +1,4 @@
-import { isPlaceholderPhoneNumber, primaryContact, textContacts, textReadyContacts } from "./format";
+import { primaryContact, textContacts, textReadyContacts } from "./format";
 import type { Facility, Opportunity, OutreachLog } from "./types";
 import type { TodayStatus } from "./todayStatus";
 
@@ -52,8 +52,9 @@ export function outreachReasonLabels(item: OutreachQueueItem) {
   const labels: string[] = [];
   const readiness = textReadiness(item.facility);
   const contact = primaryContact(item.facility);
-  const readyPrimary = contact?.phone && (contact.preferredMethod ?? "text") === "text" && !isPlaceholderPhoneNumber(contact.phone);
-  const readyContact = textReadyContacts(item.facility)[0];
+  const readyContacts = textReadyContacts(item.facility);
+  const readyContact = readyContacts[0];
+  const readyPrimary = Boolean(contact?.primary && readyContacts.some((ready) => ready.id === contact.id));
 
   if (item.opportunity) labels.push(`+${item.opportunity.addedDriveMinutes} min detour`);
   if (readiness === "ready" && contact?.primary && readyPrimary) labels.push("Primary SLP ready");

@@ -77,6 +77,25 @@ try {
     "placeholder contacts must not log Texted today",
   );
 
+  await page.getByLabel("Phone for Lisa").first().fill("abc");
+  await waitForStoredState(
+    page,
+    (state) =>
+      state.facilities
+        .find((facility) => facility.id === "encompass-westchase")
+        ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "abc",
+    "invalid phone persisted",
+  );
+  await clickVisibleButton(page, "Open Messages");
+  await page.getByText("This contact does not have a dialable phone number. Enter a real phone number before opening Messages.").first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
+  const invalidState = await storedState(page);
+  assert.equal(
+    invalidState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "texted").length,
+    beforeTextedCount,
+    "invalid phones must not log Texted today",
+  );
+
   await page.getByLabel("Phone for Lisa").first().fill("713-867-5309");
   await waitForStoredState(
     page,

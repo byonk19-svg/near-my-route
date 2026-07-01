@@ -82,6 +82,8 @@ export function todayStatusFromOutreachStatus(status: OutreachStatus): TodayStat
       return "possible_add_on";
     case "do_not_contact":
       return "do_not_contact";
+    case "do_not_contact_cleared":
+      return "not_contacted";
   }
 }
 
@@ -120,7 +122,8 @@ export function deriveTodayStatus({
   today?: string;
 }): TodayStatus {
   const log = latestTodayLog(facility.id, outreachLogs, today);
-  if (facility.doNotContact || log?.status === "do_not_contact") return "do_not_contact";
+  const doNotContactCleared = log?.status === "do_not_contact_cleared";
+  if (!doNotContactCleared && (facility.doNotContact || log?.status === "do_not_contact")) return "do_not_contact";
   if (hasTodayAddOnStop(facility.id, routeStops)) return "added";
 
   if (log) return todayStatusFromOutreachStatus(log.status);
