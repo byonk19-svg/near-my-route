@@ -1,6 +1,6 @@
 import type { Facility, OutreachLog, RouteStop } from "./types";
 
-export const initialFacilities: Facility[] = [
+const mockFacilities: Facility[] = [
   {
     id: "memorial-snf",
     name: "Memorial SNF",
@@ -350,6 +350,12 @@ export const initialFacilities: Facility[] = [
     doNotContact: true,
   },
 ];
+
+export const initialFacilities: Facility[] = mockFacilities.map((facility) => ({
+  ...facility,
+  locationStatus: "confirmed",
+  locationSource: "seed",
+}));
 
 export const initialRouteStops: RouteStop[] = [
   {

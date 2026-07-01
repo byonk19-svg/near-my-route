@@ -1,4 +1,5 @@
 import type { Facility, ImportReviewRow, RouteStop } from "./types";
+import { FALLBACK_LOCATION_COORDINATES } from "./locationTrust";
 
 const TRAILING_STUDY_COUNT_PATTERN = /,?\s*(\d+)\s*(study|studies)\s*$/i;
 const LEADING_TIME_PATTERN = /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*,?\s*/i;
@@ -126,17 +127,6 @@ export function parseScheduleText(text: string, facilities: Facility[]): ImportR
     });
 }
 
-function temporaryCoordinates(index: number) {
-  const base = [
-    { lat: 29.737, lng: -95.589 },
-    { lat: 29.711, lng: -95.524 },
-    { lat: 29.781, lng: -95.505 },
-    { lat: 29.645, lng: -95.548 },
-  ];
-
-  return base[index % base.length];
-}
-
 export function applyImportRows(
   rows: ImportReviewRow[],
   facilities: Facility[],
@@ -152,20 +142,21 @@ export function applyImportRows(
       if (importRowBlockingReason(row)) return;
 
       if (row.action === "create_new") {
-        const coordinates = temporaryCoordinates(index);
         facilityId = `facility-${Date.now()}-${index}`;
         nextFacilities.push({
           id: facilityId,
           name: row.facilityName,
           address: row.address || "Address needs review",
           city: "Imported",
-          lat: coordinates.lat,
-          lng: coordinates.lng,
+          lat: FALLBACK_LOCATION_COORDINATES.lat,
+          lng: FALLBACK_LOCATION_COORDINATES.lng,
+          locationStatus: "needs_confirmation",
+          locationSource: "import",
           facilityType: "Other",
           contacts: [],
           sameDayFriendly: "unknown",
           typicalVolume: "unknown",
-          notes: "Imported from pasted schedule. Confirm address and contacts.",
+          notes: "Imported from pasted schedule. Confirm location before route ranking.",
         });
       }
 

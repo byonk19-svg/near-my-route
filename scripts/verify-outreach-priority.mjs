@@ -137,6 +137,28 @@ try {
   await readyTextFirst.getByText("Ready to text").waitFor();
   assert.equal(await page.getByTestId("ready-to-text-queue").getByText("Encompass Rehab Westchase").count(), 0);
 
+  await page.evaluate((key) => {
+    const state = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    state.facilities = state.facilities.map((facility) =>
+      facility.id === "lakeside-rehab"
+        ? { ...facility, locationStatus: "needs_confirmation", locationSource: "fallback" }
+        : facility,
+    );
+    window.localStorage.setItem(key, JSON.stringify(state));
+  }, storageKey);
+  await page.reload({ waitUntil: "networkidle" });
+  await clickVisible(page, "Outreach");
+  await page.getByText("Route includes unconfirmed locations: Lakeside Rehab.").first().waitFor();
+  const blockedTextFirst = await firstVisible(page.getByTestId("text-first-card"), "blocked Text First card");
+  await blockedTextFirst.getByRole("heading", { name: "No uncontacted facility needs a text right now" }).waitFor();
+  assert.equal(await page.getByTestId("ready-to-text-queue").getByText("Encompass Rehab Westchase").count(), 0);
+  await clickVisible(page, "Near My Route");
+  const blockedMapsButton = await firstVisible(
+    page.getByRole("button", { name: "Confirm locations for Maps" }),
+    "blocked Google Maps handoff",
+  );
+  assert.equal(await blockedMapsButton.isDisabled(), true);
+
   console.log("Outreach priority browser validation passed.");
 } finally {
   await browser.close();
