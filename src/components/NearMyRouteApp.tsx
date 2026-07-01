@@ -22,7 +22,7 @@ import { initialFacilities, initialOutreachLogs, initialRouteStops } from "@/lib
 import { calculateRouteOpportunities } from "@/lib/routeCalculations";
 import { applyImportRows, importRowBlockingReason, parseScheduleText } from "@/lib/scheduleImport";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
-import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, RouteStop } from "@/lib/types";
+import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteStop } from "@/lib/types";
 import {
   buildSmsUrl,
   canAttemptSms,
@@ -712,12 +712,118 @@ function TodayStatusStrip({ counts }: { counts: Array<{ status: TodayStatus; lab
   );
 }
 
+function ContactSetupPanel({
+  facility,
+  defaultOpen = false,
+  onAddContact,
+  onUpdateContact,
+}: {
+  facility: Facility;
+  defaultOpen?: boolean;
+  onAddContact: () => void;
+  onUpdateContact: (contactId: string, patch: Partial<FacilityContact>) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const readiness = textReadiness(facility);
+  const readyContact = phoneContacts(facility).find((contact) => !isPlaceholderPhoneNumber(contact.phone));
+  const readinessCopy =
+    readiness === "ready"
+      ? `Phone ready${readyContact ? ` for ${readyContact.name}` : ""}.`
+      : readiness === "needs_real_phone"
+        ? "Replace placeholder numbers before texting."
+        : "Add a phone-capable contact before texting.";
+
+  return (
+    <details
+      data-testid={`contact-setup-${facility.id}`}
+      className="mt-3 rounded-lg border border-slate-200 bg-white/80 p-3"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer text-sm font-black text-slate-950">
+        Contact setup
+        <span className="ml-2 align-middle text-xs font-bold text-slate-500">{readiness === "ready" ? "Phone ready" : "Needs phone"}</span>
+      </summary>
+      <p className={cx("mt-2 text-xs font-bold", readiness === "ready" ? "text-green-700" : "text-orange-700")}>{readinessCopy}</p>
+      <div className="mt-3 grid gap-3">
+        {facility.contacts.map((contact, index) => (
+          <div key={contact.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <label className="flex items-center gap-2 text-xs font-bold uppercase text-slate-600">
+                <input
+                  type="radio"
+                  name={`recommended-${facility.id}`}
+                  checked={Boolean(contact.primary)}
+                  onChange={() => onUpdateContact(contact.id, { primary: true })}
+                  className="h-4 w-4 border-slate-300 text-blue-600"
+                />
+                Recommended
+              </label>
+              {isPlaceholderPhoneNumber(contact.phone) ? <Badge tone="orange">Placeholder phone</Badge> : contact.phone ? <Badge tone="green">Phone ready</Badge> : <Badge tone="orange">No phone</Badge>}
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="text-[11px] font-bold uppercase text-slate-500">
+                Name
+                <input
+                  aria-label={`Contact name for ${contact.name || `contact ${index + 1}`}`}
+                  value={contact.name}
+                  onChange={(event) => onUpdateContact(contact.id, { name: event.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold normal-case text-slate-900"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase text-slate-500">
+                Role
+                <input
+                  aria-label={`Role for ${contact.name || `contact ${index + 1}`}`}
+                  value={contact.role ?? ""}
+                  onChange={(event) => onUpdateContact(contact.id, { role: event.target.value })}
+                  placeholder="SLP"
+                  className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold normal-case text-slate-900"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase text-slate-500">
+                Phone
+                <input
+                  aria-label={`Phone for ${contact.name || `contact ${index + 1}`}`}
+                  value={contact.phone ?? ""}
+                  onChange={(event) => onUpdateContact(contact.id, { phone: event.target.value })}
+                  placeholder="Add phone number"
+                  inputMode="tel"
+                  className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold normal-case text-slate-900"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase text-slate-500">
+                Method
+                <select
+                  aria-label={`Preferred method for ${contact.name || `contact ${index + 1}`}`}
+                  value={contact.preferredMethod ?? "text"}
+                  onChange={(event) => onUpdateContact(contact.id, { preferredMethod: event.target.value as PreferredMethod })}
+                  className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold normal-case text-slate-900"
+                >
+                  <option value="text">Text</option>
+                  <option value="call">Call</option>
+                  <option value="email">Email</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+      <Button className="mt-3 w-full" onClick={onAddContact}>
+        <Plus size={15} /> Add contact
+      </Button>
+    </details>
+  );
+}
+
 function OutreachQueueCard({
   facility,
   opportunity,
   status,
   latestLog,
   reasonLabels,
+  onAddContact,
+  onUpdateContact,
   onReview,
   onTemplate,
   onLogStatus,
@@ -730,6 +836,8 @@ function OutreachQueueCard({
   status: TodayStatus;
   latestLog?: OutreachLog;
   reasonLabels: string[];
+  onAddContact: () => void;
+  onUpdateContact: (contactId: string, patch: Partial<FacilityContact>) => void;
   onReview: () => void;
   onTemplate: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
@@ -737,7 +845,11 @@ function OutreachQueueCard({
   onOpenRoute: () => void;
   onRemoveAddOn: () => void;
 }) {
-  const contact = primaryContact(facility);
+  const readiness = textReadiness(facility);
+  const contact =
+    readiness === "ready"
+      ? phoneContacts(facility).find((item) => !isPlaceholderPhoneNumber(item.phone)) ?? primaryContact(facility)
+      : primaryContact(facility);
   const canAddRoute = Boolean(opportunity);
   const actionButtons: React.ReactNode[] = [];
 
@@ -821,6 +933,14 @@ function OutreachQueueCard({
           ))}
         </div>
       </button>
+      {status === "not_contacted" && readiness !== "ready" ? (
+        <ContactSetupPanel
+          facility={facility}
+          defaultOpen
+          onAddContact={onAddContact}
+          onUpdateContact={onUpdateContact}
+        />
+      ) : null}
       {actionButtons.length > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">{actionButtons}</div> : null}
       {status === "possible_add_on" && !canAddRoute ? (
         <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
@@ -838,10 +958,14 @@ function OutreachQueueCard({
 
 function TextFirstCard({
   item,
+  onAddContact,
+  onUpdateContact,
   onText,
   onReview,
 }: {
   item?: OutreachQueueItem;
+  onAddContact: () => void;
+  onUpdateContact: (contactId: string, patch: Partial<FacilityContact>) => void;
   onText: () => void;
   onReview: () => void;
 }) {
@@ -854,8 +978,11 @@ function TextFirstCard({
     );
   }
 
-  const contact = primaryContact(item.facility);
   const readiness = textReadiness(item.facility);
+  const contact =
+    readiness === "ready"
+      ? phoneContacts(item.facility).find((candidate) => !isPlaceholderPhoneNumber(candidate.phone)) ?? primaryContact(item.facility)
+      : primaryContact(item.facility);
   const readinessLabel = readiness === "ready" ? "Ready to text" : readiness === "needs_real_phone" ? "Needs real phone" : "Needs phone";
   const labels = outreachReasonLabels(item).filter((label) => label !== readinessLabel);
 
@@ -884,6 +1011,12 @@ function TextFirstCard({
           </Badge>
         ))}
       </div>
+      <ContactSetupPanel
+        facility={item.facility}
+        defaultOpen={readiness !== "ready"}
+        onAddContact={onAddContact}
+        onUpdateContact={onUpdateContact}
+      />
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button tone="primary" onClick={onText}>
           <Send size={15} /> Text
@@ -1537,14 +1670,27 @@ export default function NearMyRouteApp() {
   }
 
   function updateContactPhone(facilityId: string, contactId: string, phone: string) {
-    const normalizedPhone = phone.trim() || undefined;
+    updateContact(facilityId, contactId, { phone });
+  }
+
+  function updateContact(facilityId: string, contactId: string, patch: Partial<FacilityContact>) {
+    const normalizedPatch = {
+      ...patch,
+      ...(Object.prototype.hasOwnProperty.call(patch, "phone") ? { phone: patch.phone?.trim() || undefined } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "role") ? { role: patch.role?.trim() || undefined } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "name") ? { name: patch.name ?? "" } : {}),
+    };
     setFacilities((current) =>
       current.map((facility) =>
         facility.id === facilityId
           ? {
               ...facility,
               contacts: facility.contacts.map((contact) =>
-                contact.id === contactId ? { ...contact, phone: normalizedPhone } : contact,
+                contact.id === contactId
+                  ? { ...contact, ...normalizedPatch }
+                  : normalizedPatch.primary
+                    ? { ...contact, primary: false }
+                    : contact,
               ),
             }
           : facility,
@@ -1556,6 +1702,28 @@ export default function NearMyRouteApp() {
       delete next[facilityId];
       return next;
     });
+  }
+
+  function addContact(facilityId: string) {
+    setFacilities((current) =>
+      current.map((facility) => {
+        if (facility.id !== facilityId) return facility;
+        const hasPrimaryContact = facility.contacts.some((contact) => contact.primary);
+        return {
+          ...facility,
+          contacts: [
+            ...facility.contacts,
+            {
+              id: nextId("contact"),
+              name: "New contact",
+              role: "SLP",
+              preferredMethod: "text" as const,
+              primary: !hasPrimaryContact,
+            },
+          ],
+        };
+      }),
+    );
   }
 
   function parseImportSchedule() {
@@ -2587,6 +2755,8 @@ export default function NearMyRouteApp() {
             </div>
             <TextFirstCard
               item={textFirstItem}
+              onAddContact={() => textFirstItem && addContact(textFirstItem.facility.id)}
+              onUpdateContact={(contactId, patch) => textFirstItem && updateContact(textFirstItem.facility.id, contactId, patch)}
               onText={() => textFirstItem && void startTextFlow(textFirstItem.facility.id)}
               onReview={() => textFirstItem && openFacilityReview(textFirstItem.facility.id, false, "Outreach")}
             />
@@ -2601,6 +2771,8 @@ export default function NearMyRouteApp() {
                     status={status}
                     latestLog={latestLog}
                     reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                    onAddContact={() => addContact(facility.id)}
+                    onUpdateContact={(contactId, patch) => updateContact(facility.id, contactId, patch)}
                     onReview={() => openFacilityReview(facility.id, false, "Outreach")}
                     onTemplate={() => {
                       void startTextFlow(facility.id);
@@ -2629,6 +2801,8 @@ export default function NearMyRouteApp() {
                       status={status}
                       latestLog={latestLog}
                       reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                      onAddContact={() => addContact(facility.id)}
+                      onUpdateContact={(contactId, patch) => updateContact(facility.id, contactId, patch)}
                       onReview={() => openFacilityReview(facility.id, false, "Outreach")}
                       onTemplate={() => {
                         void startTextFlow(facility.id);
@@ -2653,6 +2827,8 @@ export default function NearMyRouteApp() {
                     status={status}
                     latestLog={latestLog}
                     reasonLabels={outreachReasonLabels({ facility, opportunity, status, latestLog })}
+                    onAddContact={() => addContact(facility.id)}
+                    onUpdateContact={(contactId, patch) => updateContact(facility.id, contactId, patch)}
                     onReview={() => openFacilityReview(facility.id, false, "Outreach")}
                     onTemplate={() => {
                       void startTextFlow(facility.id);
