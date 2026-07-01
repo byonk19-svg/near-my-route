@@ -1,4 +1,4 @@
-import { isPlaceholderPhoneNumber, phoneContacts, primaryContact } from "./format";
+import { isPlaceholderPhoneNumber, primaryContact, textContacts, textReadyContacts } from "./format";
 import type { Facility, Opportunity, OutreachLog } from "./types";
 import type { TodayStatus } from "./todayStatus";
 
@@ -22,9 +22,9 @@ const outreachPriorityOrder: Record<TodayStatus, number> = {
 };
 
 export function textReadiness(facility: Facility): TextReadiness {
-  const contacts = phoneContacts(facility);
+  const contacts = textContacts(facility);
   if (contacts.length === 0) return "no_phone";
-  return contacts.some((contact) => !isPlaceholderPhoneNumber(contact.phone)) ? "ready" : "needs_real_phone";
+  return textReadyContacts(facility).length > 0 ? "ready" : "needs_real_phone";
 }
 
 export function hasAddOnOpportunity(item: OutreachQueueItem) {
@@ -52,8 +52,8 @@ export function outreachReasonLabels(item: OutreachQueueItem) {
   const labels: string[] = [];
   const readiness = textReadiness(item.facility);
   const contact = primaryContact(item.facility);
-  const readyPrimary = contact?.phone && !isPlaceholderPhoneNumber(contact.phone);
-  const readyContact = phoneContacts(item.facility).find((candidate) => !isPlaceholderPhoneNumber(candidate.phone));
+  const readyPrimary = contact?.phone && (contact.preferredMethod ?? "text") === "text" && !isPlaceholderPhoneNumber(contact.phone);
+  const readyContact = textReadyContacts(item.facility)[0];
 
   if (item.opportunity) labels.push(`+${item.opportunity.addedDriveMinutes} min detour`);
   if (readiness === "ready" && contact?.primary && readyPrimary) labels.push("Primary SLP ready");

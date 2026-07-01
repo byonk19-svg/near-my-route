@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSmsUrl, canAttemptSms, isPlaceholderPhoneNumber, OUTREACH_MESSAGE, phoneContacts, safeMessage } from "./format";
+import { buildSmsUrl, canAttemptSms, isPlaceholderPhoneNumber, OUTREACH_MESSAGE, phoneContacts, safeMessage, textContacts, textReadyContacts } from "./format";
 import { initialFacilities } from "./mockData";
 
 test("safeMessage returns the approved PHI-safe outreach template", () => {
@@ -19,6 +19,25 @@ test("phoneContacts returns phone-capable contacts with the primary contact firs
     phoneContacts(facility).map((contact) => contact.id),
     ["c-westchase-maria", "c-westchase-ken"],
   );
+});
+
+test("textContacts honors preferred method and textReadyContacts excludes placeholders", () => {
+  const facility = initialFacilities.find((item) => item.id === "park-manor-westchase");
+  assert.ok(facility);
+  const withReadySecondary = {
+    ...facility,
+    contacts: facility.contacts.map((contact) =>
+      contact.id === "c-westchase-maria"
+        ? { ...contact, phone: "555-0144", preferredMethod: "text" as const }
+        : { ...contact, phone: "713-867-5310", preferredMethod: "call" as const },
+    ),
+  };
+
+  assert.deepEqual(
+    textContacts(withReadySecondary).map((contact) => contact.id),
+    ["c-westchase-maria"],
+  );
+  assert.deepEqual(textReadyContacts(withReadySecondary), []);
 });
 
 test("buildSmsUrl normalizes phone numbers and encodes the message body", () => {

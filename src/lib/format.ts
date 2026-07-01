@@ -14,6 +14,14 @@ export function phoneContacts(facility: Facility) {
     .sort((a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary)));
 }
 
+export function textContacts(facility: Facility) {
+  return phoneContacts(facility).filter((contact) => (contact.preferredMethod ?? "text") === "text");
+}
+
+export function textReadyContacts(facility: Facility) {
+  return textContacts(facility).filter((contact) => !isPlaceholderPhoneNumber(contact.phone));
+}
+
 export function normalizePhoneForSms(phone: string) {
   const trimmed = phone.trim();
   const prefix = trimmed.startsWith("+") ? "+" : "";

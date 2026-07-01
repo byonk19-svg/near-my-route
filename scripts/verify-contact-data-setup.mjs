@@ -90,11 +90,27 @@ try {
   textFirst = await openFreshOutreach(page);
   const setup = textFirst.getByTestId("contact-setup-encompass-westchase");
   await clickVisible(setup, "Add contact");
-  await setup.getByLabel("Contact name for New contact").fill("Ken");
-  await setup.getByLabel("Role for Ken").fill("Rehab Manager");
-  await setup.getByLabel("Phone for Ken").fill("713-867-5310");
-  await setup.getByLabel("Preferred method for Ken").selectOption("text");
-  await setup.getByRole("radio", { name: "Recommended" }).nth(1).check();
+  const newContactId = await waitForStoredState(
+    page,
+    (state) => state.facilities.find((item) => item.id === "encompass-westchase")?.contacts.find((contact) => contact.name === "New contact")?.id,
+    "new contact id created",
+  ).then((state) => state.facilities.find((item) => item.id === "encompass-westchase").contacts.find((contact) => contact.name === "New contact").id);
+  const kenEditor = setup.getByTestId(`contact-editor-${newContactId}`);
+  await kenEditor.getByLabel("Contact name for New contact").fill("Ken");
+  await kenEditor.getByLabel("Role for Ken").fill("Rehab Manager");
+  await kenEditor.getByLabel("Phone for Ken").fill("713-867-5310");
+  await kenEditor.getByLabel("Preferred method for Ken").selectOption("call");
+  await waitForStoredState(
+    page,
+    (state) => {
+      const facility = state.facilities.find((item) => item.id === "encompass-westchase");
+      const ken = facility?.contacts.find((contact) => contact.name === "Ken");
+      return ken?.phone === "713-867-5310" && ken?.preferredMethod === "call" && ken?.primary !== true;
+    },
+    "call-preferred Ken saved without changing text readiness",
+  );
+  await kenEditor.getByLabel("Preferred method for Ken").selectOption("text");
+  await kenEditor.getByRole("radio", { name: "Recommended" }).check();
   await waitForStoredState(
     page,
     (state) => {
@@ -108,12 +124,8 @@ try {
   await textFirst.getByText("Ready to text").waitFor();
 
   await clickVisible(textFirst, "Text");
-  await page.getByText("Choose text contact").waitFor();
-  const picker = page.locator("section").filter({ hasText: "Choose text contact" }).last();
-  await picker.getByText("Ken", { exact: true }).waitFor();
-  await picker.getByText("Recommended", { exact: true }).waitFor();
-  await clickVisible(picker, "Ken");
   await page.getByText("Template copied. Open Messages on your phone, then mark this facility texted.").first().waitFor();
+  assert.equal(await page.getByText("Choose text contact").count(), 0);
   await clickVisible(page, "Mark texted");
   await waitForStoredState(
     page,
@@ -123,6 +135,35 @@ try {
       ),
     "recommended Ken contact used for Messages handoff",
   );
+
+  textFirst = await openFreshOutreach(page);
+  const needsPhoneQueue = page.getByTestId("needs-phone-queue");
+  const westHoustonCard = needsPhoneQueue.locator("article").filter({ hasText: "West Houston LTACH" }).first();
+  await westHoustonCard.getByText("No phone saved").waitFor();
+  await clickVisible(westHoustonCard.getByTestId("contact-setup-west-houston-ltach"), "Add contact");
+  const westHoustonNewId = await waitForStoredState(
+    page,
+    (state) => state.facilities.find((item) => item.id === "west-houston-ltach")?.contacts.find((contact) => contact.name === "New contact")?.id,
+    "West Houston contact id created",
+  ).then((state) => state.facilities.find((item) => item.id === "west-houston-ltach").contacts.find((contact) => contact.name === "New contact").id);
+  const westHoustonEditor = westHoustonCard.getByTestId(`contact-editor-${westHoustonNewId}`);
+  await westHoustonEditor.getByLabel("Contact name for New contact").fill("Nora");
+  await westHoustonEditor.getByLabel("Role for Nora").fill("SLP Lead");
+  await westHoustonEditor.getByLabel("Preferred method for Nora").selectOption("text");
+  await westHoustonEditor.getByRole("radio", { name: "Recommended" }).check();
+  await westHoustonEditor.getByLabel("Phone for Nora").fill("713-867-5320");
+  await waitForStoredState(
+    page,
+    (state) => {
+      const facility = state.facilities.find((item) => item.id === "west-houston-ltach");
+      const nora = facility?.contacts.find((contact) => contact.name === "Nora");
+      return nora?.phone === "713-867-5320" && nora?.preferredMethod === "text" && nora?.primary === true;
+    },
+    "queue card contact setup saved",
+  );
+  const promotedTextFirst = await firstVisible(page.getByTestId("text-first-card"), "promoted queue contact Text First card");
+  await promotedTextFirst.getByRole("heading", { name: "West Houston LTACH" }).waitFor();
+  await promotedTextFirst.getByText("Ready to text").waitFor();
 
   console.log("Contact setup browser validation passed.");
 } finally {

@@ -44,6 +44,21 @@ test("textReadiness distinguishes ready, placeholder, and missing phone contacts
   assert.equal(textReadiness(missing), "no_phone");
 });
 
+test("textReadiness ignores non-text preferred phone contacts", () => {
+  const callOnly = facility("encompass-westchase", {
+    contacts: [{ id: "call", name: "Lisa", phone: "713-867-5309", preferredMethod: "call", primary: true }],
+  });
+  const mixed = facility("encompass-westchase", {
+    contacts: [
+      { id: "call", name: "Lisa", phone: "713-867-5309", preferredMethod: "call", primary: true },
+      { id: "text", name: "Ken", phone: "713-867-5310", preferredMethod: "text" },
+    ],
+  });
+
+  assert.equal(textReadiness(callOnly), "no_phone");
+  assert.equal(textReadiness(mixed), "ready");
+});
+
 test("selectTextFirst chooses the best ready not-contacted option before placeholder setup work", () => {
   const ready = facility("encompass-westchase", {
     contacts: [{ id: "ready", name: "Lisa", phone: "713-867-5309", primary: true }],

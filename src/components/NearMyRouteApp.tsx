@@ -29,9 +29,10 @@ import {
   formatDaysAgo,
   friendlyValue,
   isPlaceholderPhoneNumber,
-  phoneContacts,
   primaryContact,
   safeMessage,
+  textContacts,
+  textReadyContacts,
   todayIsoDate,
 } from "@/lib/format";
 import {
@@ -725,7 +726,7 @@ function ContactSetupPanel({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const readiness = textReadiness(facility);
-  const readyContact = phoneContacts(facility).find((contact) => !isPlaceholderPhoneNumber(contact.phone));
+  const readyContact = textReadyContacts(facility)[0];
   const readinessCopy =
     readiness === "ready"
       ? `Phone ready${readyContact ? ` for ${readyContact.name}` : ""}.`
@@ -747,7 +748,7 @@ function ContactSetupPanel({
       <p className={cx("mt-2 text-xs font-bold", readiness === "ready" ? "text-green-700" : "text-orange-700")}>{readinessCopy}</p>
       <div className="mt-3 grid gap-3">
         {facility.contacts.map((contact, index) => (
-          <div key={contact.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div key={contact.id} data-testid={`contact-editor-${contact.id}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
               <label className="flex items-center gap-2 text-xs font-bold uppercase text-slate-600">
                 <input
@@ -848,7 +849,7 @@ function OutreachQueueCard({
   const readiness = textReadiness(facility);
   const contact =
     readiness === "ready"
-      ? phoneContacts(facility).find((item) => !isPlaceholderPhoneNumber(item.phone)) ?? primaryContact(facility)
+      ? textReadyContacts(facility)[0] ?? primaryContact(facility)
       : primaryContact(facility);
   const canAddRoute = Boolean(opportunity);
   const actionButtons: React.ReactNode[] = [];
@@ -981,7 +982,7 @@ function TextFirstCard({
   const readiness = textReadiness(item.facility);
   const contact =
     readiness === "ready"
-      ? phoneContacts(item.facility).find((candidate) => !isPlaceholderPhoneNumber(candidate.phone)) ?? primaryContact(item.facility)
+      ? textReadyContacts(item.facility)[0] ?? primaryContact(item.facility)
       : primaryContact(item.facility);
   const readinessLabel = readiness === "ready" ? "Ready to text" : readiness === "needs_real_phone" ? "Needs real phone" : "Needs phone";
   const labels = outreachReasonLabels(item).filter((label) => label !== readinessLabel);
@@ -1497,7 +1498,7 @@ export default function NearMyRouteApp() {
     ? todayStatusByFacilityId.get(selectedFacility.id)
     : undefined;
   const textPickerFacility = textPickerFacilityId ? facilities.find((facility) => facility.id === textPickerFacilityId) : undefined;
-  const textPickerContacts = textPickerFacility ? phoneContacts(textPickerFacility) : [];
+  const textPickerContacts = textPickerFacility ? textReadyContacts(textPickerFacility) : [];
   const todayQueue = sortOutreachQueue(facilities
     .map((facility) => {
       const opportunity =
@@ -1767,7 +1768,7 @@ export default function NearMyRouteApp() {
     if (!facility) return;
 
     setSelectedFacilityId(facilityId);
-    const contacts = phoneContacts(facility);
+    const contacts = textContacts(facility);
     if (contacts.length === 0) {
       setPendingTextContactByFacilityId((current) => {
         const next = { ...current };
@@ -1779,7 +1780,16 @@ export default function NearMyRouteApp() {
       return;
     }
 
-    if (contacts.length > 1) {
+    const readyContacts = contacts.filter((contact) => !isPlaceholderPhoneNumber(contact.phone));
+    const recommendedReadyContacts = readyContacts.filter((contact) => contact.primary);
+    const directContact = recommendedReadyContacts.length === 1 ? recommendedReadyContacts[0] : readyContacts.length === 1 ? readyContacts[0] : undefined;
+
+    if (directContact) {
+      await openMessagesForContact(facilityId, directContact.id);
+      return;
+    }
+
+    if (readyContacts.length > 1) {
       setShowMessage(false);
       setTextPickerFacilityId(facilityId);
       return;
