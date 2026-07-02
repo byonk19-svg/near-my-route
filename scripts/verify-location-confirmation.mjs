@@ -88,8 +88,9 @@ try {
   const addressLookup = queue.getByRole("link", { name: "Open address in Google Maps" });
   await addressLookup.waitFor();
   assert.match(await addressLookup.getAttribute("href"), /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/);
-  await clickVisible(queue, "Use coordinates from URL");
-  await queue.getByText("Paste a Google Maps URL before using coordinates from it.").waitFor();
+  const blankMapsUrlButton = queue.getByRole("button", { name: "Paste Maps URL first" });
+  await blankMapsUrlButton.waitFor();
+  assert.equal(await blankMapsUrlButton.isDisabled(), true);
   await queue.getByLabel("Latitude for Cypress Care").fill("");
   await clickVisible(queue, "Confirm Location");
   await queue.getByText("Enter a valid latitude before confirming this location.").waitFor();
@@ -99,6 +100,7 @@ try {
   await queue
     .getByLabel("Google Maps URL for Cypress Care")
     .fill("https://www.google.com/maps/place/Cypress+Care/@29.1,-95.1,17z/data=!3d29.7066!4d-95.5492");
+  await queue.getByRole("button", { name: "Use coordinates from URL" }).waitFor();
   await clickVisible(queue, "Use coordinates from URL");
   await queue.getByText("Coordinates added from Google Maps URL. Confirm the pin is correct before saving.").waitFor();
   assert.equal(await queue.getByLabel("Latitude for Cypress Care").inputValue(), "29.7066");

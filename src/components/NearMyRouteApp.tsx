@@ -441,6 +441,7 @@ function LocationConfirmationCard({
   const parsedLat = parseCoordinate(lat);
   const parsedLng = parseCoordinate(lng);
   const hasFallbackCoordinates = Number.isFinite(parsedLat) && Number.isFinite(parsedLng) && isFallbackLocation({ lat: parsedLat, lng: parsedLng });
+  const hasMapsUrl = Boolean(mapsUrl.trim());
   const mapsSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     [facility.name, address].filter(Boolean).join(", "),
   )}`;
@@ -535,8 +536,8 @@ function LocationConfirmationCard({
       <p className="mt-1 text-xs font-semibold text-slate-500">
         Paste the Maps URL after opening the address. We&apos;ll extract coordinates if they are present.
       </p>
-      <Button className="mt-2 w-full" tone="secondary" onClick={useCoordinatesFromMapsUrl}>
-        Use coordinates from URL
+      <Button className="mt-2 w-full" tone="secondary" disabled={!hasMapsUrl} onClick={useCoordinatesFromMapsUrl}>
+        {hasMapsUrl ? "Use coordinates from URL" : "Paste Maps URL first"}
       </Button>
       {mapsUrlIssue ? (
         <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
