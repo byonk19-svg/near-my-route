@@ -6,6 +6,19 @@ const MOBILE_WAYPOINT_LIMIT = 3;
 const STANDARD_WAYPOINT_LIMIT = 9;
 const SPLIT_LEG_STOP_LIMIT = MOBILE_WAYPOINT_LIMIT + 2;
 
+export type GoogleMapsCoordinateSource = "place" | "mapCenter" | "query";
+
+export type ParsedGoogleMapsCoordinates = {
+  lat: number;
+  lng: number;
+  source: GoogleMapsCoordinateSource;
+};
+
+const DECIMAL_COORDINATE = String.raw`-?\d+(?:\.\d+)?`;
+const PLACE_COORDINATES_PATTERN = new RegExp(`!3d(${DECIMAL_COORDINATE})!4d(${DECIMAL_COORDINATE})`, "i");
+const MAP_CENTER_COORDINATES_PATTERN = new RegExp(`@(${DECIMAL_COORDINATE}),(${DECIMAL_COORDINATE})(?:[,/?#]|$)`, "i");
+const QUERY_COORDINATES_PATTERN = new RegExp(`^\\s*(${DECIMAL_COORDINATE})\\s*,\\s*(${DECIMAL_COORDINATE})\\s*$`);
+
 function hasValidCoordinates(facility: RouteLocation) {
   return (
     Number.isFinite(facility.lat) &&
@@ -13,6 +26,54 @@ function hasValidCoordinates(facility: RouteLocation) {
     Math.abs(facility.lat) <= 90 &&
     Math.abs(facility.lng) <= 180
   );
+}
+
+function isValidCoordinatePair(lat: number, lng: number) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+function parsedCoordinatePair(latValue: string, lngValue: string, source: GoogleMapsCoordinateSource) {
+  const lat = Number(latValue);
+  const lng = Number(lngValue);
+  if (!isValidCoordinatePair(lat, lng)) return undefined;
+  return { lat, lng, source };
+}
+
+function decodedUrlText(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export function parseGoogleMapsCoordinates(value: string): ParsedGoogleMapsCoordinates | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const decoded = decodedUrlText(trimmed);
+  const placeCoordinates = PLACE_COORDINATES_PATTERN.exec(decoded);
+  if (placeCoordinates) {
+    return parsedCoordinatePair(placeCoordinates[1], placeCoordinates[2], "place");
+  }
+
+  const mapCenterCoordinates = MAP_CENTER_COORDINATES_PATTERN.exec(decoded);
+  if (mapCenterCoordinates) {
+    return parsedCoordinatePair(mapCenterCoordinates[1], mapCenterCoordinates[2], "mapCenter");
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const query = url.searchParams.get("q");
+    if (!query) return undefined;
+    const queryCoordinates = QUERY_COORDINATES_PATTERN.exec(query);
+    if (!queryCoordinates) return undefined;
+    return parsedCoordinatePair(queryCoordinates[1], queryCoordinates[2], "query");
+  } catch {
+    const queryCoordinates = QUERY_COORDINATES_PATTERN.exec(trimmed);
+    if (!queryCoordinates) return undefined;
+    return parsedCoordinatePair(queryCoordinates[1], queryCoordinates[2], "query");
+  }
 }
 
 function googleMapsPlaceQuery(facility: RouteLocation) {

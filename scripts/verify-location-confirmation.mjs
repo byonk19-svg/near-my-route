@@ -88,14 +88,27 @@ try {
   const addressLookup = queue.getByRole("link", { name: "Open address in Google Maps" });
   await addressLookup.waitFor();
   assert.match(await addressLookup.getAttribute("href"), /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/);
+  await clickVisible(queue, "Use coordinates from URL");
+  await queue.getByText("Paste a Google Maps URL before using coordinates from it.").waitFor();
   await queue.getByLabel("Latitude for Cypress Care").fill("");
   await clickVisible(queue, "Confirm Location");
   await queue.getByText("Enter a valid latitude before confirming this location.").waitFor();
   await queue.getByLabel("Latitude for Cypress Care").fill("29.7604");
   await clickVisible(queue, "Confirm Location");
   await queue.getByText("Edit the fallback coordinates before confirming this location.").waitFor();
-  await queue.getByLabel("Latitude for Cypress Care").fill("29.7066");
-  await queue.getByLabel("Longitude for Cypress Care").fill("-95.5492");
+  await queue
+    .getByLabel("Google Maps URL for Cypress Care")
+    .fill("https://www.google.com/maps/place/Cypress+Care/@29.1,-95.1,17z/data=!3d29.7066!4d-95.5492");
+  await clickVisible(queue, "Use coordinates from URL");
+  await queue.getByText("Coordinates added from Google Maps URL. Confirm the pin is correct before saving.").waitFor();
+  assert.equal(await queue.getByLabel("Latitude for Cypress Care").inputValue(), "29.7066");
+  assert.equal(await queue.getByLabel("Longitude for Cypress Care").inputValue(), "-95.5492");
+  assert.equal(
+    await queue
+      .getByText("These are placeholder Houston coordinates. Open the address in Google Maps, then replace latitude and longitude before confirming.")
+      .count(),
+    0,
+  );
   await clickVisible(queue, "Confirm Location");
 
   const confirmed = await waitForStoredState(
