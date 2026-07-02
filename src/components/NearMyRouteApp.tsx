@@ -41,6 +41,7 @@ import {
   buildGoogleMapsDirectionsUrl,
   googleMapsWaypointWarning,
   orderedRouteFacilities,
+  parseGoogleMapsCoordinates,
   routeFacilitiesWithInsertedAddOn,
   splitGoogleMapsDirectionsUrls,
 } from "@/lib/googleMaps";
@@ -433,6 +434,9 @@ function LocationConfirmationCard({
   const [address, setAddress] = useState(facility.address);
   const [lat, setLat] = useState(String(facility.lat));
   const [lng, setLng] = useState(String(facility.lng));
+  const [mapsUrl, setMapsUrl] = useState("");
+  const [mapsUrlIssue, setMapsUrlIssue] = useState<string | undefined>();
+  const [mapsUrlSuccess, setMapsUrlSuccess] = useState<string | undefined>();
   const [issue, setIssue] = useState<string | undefined>();
   const parsedLat = parseCoordinate(lat);
   const parsedLng = parseCoordinate(lng);
@@ -444,6 +448,29 @@ function LocationConfirmationCard({
   function parseCoordinate(value: string) {
     const trimmed = value.trim();
     return trimmed ? Number(trimmed) : Number.NaN;
+  }
+
+  function useCoordinatesFromMapsUrl() {
+    const parsedCoordinates = parseGoogleMapsCoordinates(mapsUrl);
+    setMapsUrlSuccess(undefined);
+    if (!mapsUrl.trim()) {
+      setMapsUrlIssue("Paste a Google Maps URL before using coordinates from it.");
+      return;
+    }
+    if (!parsedCoordinates) {
+      setMapsUrlIssue("No usable coordinates were found in that Google Maps URL.");
+      return;
+    }
+
+    setLat(String(parsedCoordinates.lat));
+    setLng(String(parsedCoordinates.lng));
+    setIssue(undefined);
+    setMapsUrlIssue(undefined);
+    setMapsUrlSuccess(
+      parsedCoordinates.source === "place"
+        ? "Coordinates added from Google Maps URL. Confirm the pin is correct before saving."
+        : "Coordinates came from the visible Google Maps URL. Confirm the pin is on the right facility before saving.",
+    );
   }
 
   function confirmLocation() {
@@ -489,6 +516,36 @@ function LocationConfirmationCard({
       {hasFallbackCoordinates ? (
         <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
           These are placeholder Houston coordinates. Open the address in Google Maps, then replace latitude and longitude before confirming.
+        </p>
+      ) : null}
+      <label className="mt-3 block text-[11px] font-bold uppercase text-slate-500">
+        Google Maps URL
+        <input
+          aria-label={`Google Maps URL for ${facility.name}`}
+          value={mapsUrl}
+          onChange={(event) => {
+            setMapsUrl(event.target.value);
+            setMapsUrlIssue(undefined);
+            setMapsUrlSuccess(undefined);
+          }}
+          placeholder="Paste Google Maps URL"
+          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+        />
+      </label>
+      <p className="mt-1 text-xs font-semibold text-slate-500">
+        Paste the Maps URL after opening the address. We&apos;ll extract coordinates if they are present.
+      </p>
+      <Button className="mt-2 w-full" tone="secondary" onClick={useCoordinatesFromMapsUrl}>
+        Use coordinates from URL
+      </Button>
+      {mapsUrlIssue ? (
+        <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+          {mapsUrlIssue}
+        </p>
+      ) : null}
+      {mapsUrlSuccess ? (
+        <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
+          {mapsUrlSuccess}
         </p>
       ) : null}
       <div className="mt-2 grid grid-cols-2 gap-2">
