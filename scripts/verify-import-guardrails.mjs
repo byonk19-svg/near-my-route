@@ -161,6 +161,7 @@ async function runGuardrailPath(page) {
   assert.equal(await cypressCard.getByLabel("Existing facility").isVisible(), true);
   assert.equal(await cypressCard.getByLabel("Edit address").isVisible(), true);
   await cypressCard.getByRole("button", { name: "Create new facility" }).click();
+  await cypressCard.getByLabel("New facility name").fill("Cypress Care North");
   await page.getByText("New facility locations must be confirmed before add-on ranking.").first().waitFor();
   assert.equal(await page.getByText("Resolve uncertain rows before confirming.").count(), 0);
 
@@ -172,12 +173,12 @@ async function runGuardrailPath(page) {
     page,
     (current) =>
       current.facilities.length === initialFacilityCount + 1 &&
-      current.facilities.some((facility) => facility.name === "Cypress Care") &&
+      current.facilities.some((facility) => facility.name === "Cypress Care North") &&
       current.routeStops.length === 1,
     "single explicit create-new import",
   );
   assert.equal(state.routeStops.length, 1);
-  const newFacility = state.facilities.find((facility) => facility.name === "Cypress Care");
+  const newFacility = state.facilities.find((facility) => facility.name === "Cypress Care North");
   assert.equal(newFacility?.locationStatus, "needs_confirmation");
   assert.equal(newFacility?.locationSource, "import");
   assert.match(newFacility?.notes ?? "", /Confirm location/);

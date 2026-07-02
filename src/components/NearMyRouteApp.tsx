@@ -62,7 +62,7 @@ import {
   type OutreachQueueItem,
 } from "@/lib/outreachPriority";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
-import { hasConfirmedLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
+import { hasConfirmedLocation, isFallbackLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -434,6 +434,12 @@ function LocationConfirmationCard({
   const [lat, setLat] = useState(String(facility.lat));
   const [lng, setLng] = useState(String(facility.lng));
   const [issue, setIssue] = useState<string | undefined>();
+  const parsedLat = parseCoordinate(lat);
+  const parsedLng = parseCoordinate(lng);
+  const hasFallbackCoordinates = Number.isFinite(parsedLat) && Number.isFinite(parsedLng) && isFallbackLocation({ lat: parsedLat, lng: parsedLng });
+  const mapsSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    [facility.name, address].filter(Boolean).join(", "),
+  )}`;
 
   function parseCoordinate(value: string) {
     const trimmed = value.trim();
@@ -472,6 +478,19 @@ function LocationConfirmationCard({
           className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
         />
       </label>
+      <a
+        href={mapsSearchUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-2 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-blue-700 hover:border-blue-300"
+      >
+        <ExternalLink size={13} /> Open address in Google Maps
+      </a>
+      {hasFallbackCoordinates ? (
+        <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+          These are placeholder Houston coordinates. Open the address in Google Maps, then replace latitude and longitude before confirming.
+        </p>
+      ) : null}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <label className="block text-[11px] font-bold uppercase text-slate-500">
           Latitude
@@ -1431,6 +1450,17 @@ function ImportRowControls({
             className="mt-1"
           />
           <span>Remember &quot;{row.aliasCandidate}&quot; as an alias for this facility</span>
+        </label>
+      ) : null}
+      {row.action === "create_new" ? (
+        <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-facility-name`}>
+          New facility name
+          <input
+            id={`${idPrefix}-${row.id}-facility-name`}
+            value={row.facilityName}
+            onChange={(event) => onUpdateRow(row.id, { facilityName: event.target.value })}
+            className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case text-slate-900"
+          />
         </label>
       ) : null}
       <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
@@ -3241,6 +3271,17 @@ export default function NearMyRouteApp() {
                               </p>
                             ) : (
                               <>
+                                {row.action === "create_new" ? (
+                                  <label className="mb-2 block text-xs font-bold uppercase text-slate-500">
+                                    New facility name
+                                    <input
+                                      aria-label={`New facility name for ${row.facilityName}`}
+                                      value={row.facilityName}
+                                      onChange={(event) => updateReviewRow(row.id, { facilityName: event.target.value })}
+                                      className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+                                    />
+                                  </label>
+                                ) : null}
                                 <input
                                   aria-label={`Address for ${row.facilityName}`}
                                   value={row.address}

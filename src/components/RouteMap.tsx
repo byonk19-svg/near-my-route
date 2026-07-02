@@ -110,10 +110,11 @@ export default function RouteMap({
   const center: [number, number] = routeFacilities[1]
     ? [routeFacilities[1].lat, routeFacilities[1].lng]
     : [29.735, -95.57];
+  const mapInstanceKey = routeFacilities.map((facility) => facility.id).join("|") || "empty-route";
 
   return (
     <div className="relative h-full w-full">
-    <TypedMapContainer center={center} zoom={11} scrollWheelZoom className="h-full w-full">
+    <TypedMapContainer key={mapInstanceKey} center={center} zoom={11} scrollWheelZoom className="h-full w-full">
       <TypedTileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

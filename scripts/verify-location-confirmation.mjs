@@ -60,7 +60,7 @@ try {
   await clickVisible(page, "Parse Schedule");
 
   const cypressCard = page.getByTestId("import-review-card-2");
-  await cypressCard.locator("select").first().selectOption("create_new");
+  await cypressCard.getByRole("button", { name: "Create new facility" }).click();
   await page.getByText("New facility locations must be confirmed before add-on ranking.").first().waitFor();
   await clickVisible(page, "Confirm 2 Stops");
 
@@ -82,6 +82,12 @@ try {
 
   const queue = page.getByTestId("location-confirmation-queue");
   await queue.getByText("Cypress Care").waitFor();
+  await queue
+    .getByText("These are placeholder Houston coordinates. Open the address in Google Maps, then replace latitude and longitude before confirming.")
+    .waitFor();
+  const addressLookup = queue.getByRole("link", { name: "Open address in Google Maps" });
+  await addressLookup.waitFor();
+  assert.match(await addressLookup.getAttribute("href"), /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/);
   await queue.getByLabel("Latitude for Cypress Care").fill("");
   await clickVisible(queue, "Confirm Location");
   await queue.getByText("Enter a valid latitude before confirming this location.").waitFor();
