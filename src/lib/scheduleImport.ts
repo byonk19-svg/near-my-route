@@ -6,7 +6,7 @@ const LEADING_TIME_PATTERN = /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*,?\s*/i;
 const AUTO_MATCH_CONFIDENCE = 75;
 const PLACEHOLDER_PATTERN = /^(unknown|tbd|n\/a|na|placeholder|imported facility(?: \d+)?)$/i;
 
-function normalize(value: string) {
+export function normalizeImportValue(value: string) {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
@@ -53,14 +53,14 @@ function splitFacilityAndAddress(value: string, facilities: Facility[]) {
 }
 
 function matchFacility(name: string, address: string, facilities: Facility[]) {
-  const normalizedName = normalize(name);
-  const normalizedAddress = normalize(address);
+  const normalizedName = normalizeImportValue(name);
+  const normalizedAddress = normalizeImportValue(address);
   const hasStreetLikeAddress = /^\d/.test(address.trim()) && normalizedAddress.length >= 8;
 
   return facilities
     .map((facility) => {
-      const facilityName = normalize(facility.name);
-      const facilityAddress = normalize(facility.address);
+      const facilityName = normalizeImportValue(facility.name);
+      const facilityAddress = normalizeImportValue(facility.address);
       let confidence = 0;
 
       if (normalizedName && facilityName === normalizedName) confidence += 80;
@@ -84,10 +84,13 @@ function isPlaceholder(value: string) {
 
 export function importRowBlockingReason(row: ImportReviewRow) {
   if (row.action === "skip") return undefined;
-  if (!row.appointmentTime?.trim()) return "Add an appointment time or skip this row.";
+  if (!row.appointmentTime?.trim() && !row.sourceMapLink) return "Add an appointment time or skip this row.";
   if (!row.facilityName.trim() || isPlaceholder(row.facilityName)) return "Add a real facility name or skip this row.";
   if (row.action === "needs_review") return "Choose an existing facility, create a new facility, or skip.";
   if (row.action === "use_existing" && !row.matchedFacilityId) return "Select an existing facility before confirming.";
+  if (row.action === "private_route_stop" && (!row.address.trim() || isPlaceholder(row.address))) {
+    return "Add a full address before creating a private route stop.";
+  }
   if (row.action === "create_new" && (!row.address.trim() || isPlaceholder(row.address))) {
     return "Add a full address before creating a new facility.";
   }
@@ -160,16 +163,34 @@ export function applyImportRows(
         });
       }
 
+      if (row.action === "private_route_stop") {
+        facilityId = `private-stop-${Date.now()}-${index}`;
+      }
+
       if (!facilityId) return;
 
       routeStops.push({
         id: `stop-${Date.now()}-${index}`,
         facilityId,
+        privateLocation:
+          row.action === "private_route_stop"
+            ? {
+                id: facilityId,
+                name: row.facilityName,
+                address: row.address,
+                lat: FALLBACK_LOCATION_COORDINATES.lat,
+                lng: FALLBACK_LOCATION_COORDINATES.lng,
+                locationStatus: "needs_confirmation",
+                locationSource: "import",
+                privateRouteStop: true,
+              }
+            : undefined,
         order: routeStops.length + 1,
         appointmentTime: row.appointmentTime,
         studyCount: row.studyCount,
         status: "planned",
-        source: "scheduled",
+        source: row.action === "private_route_stop" ? "private_route_stop" : "scheduled",
+        sourceMapLink: row.sourceMapLink,
       });
     });
 

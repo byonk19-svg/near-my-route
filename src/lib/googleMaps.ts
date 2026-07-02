@@ -1,11 +1,12 @@
-import type { Facility, RouteStop } from "./types";
+import type { Facility, RouteLocation, RouteStop } from "./types";
+import { orderedRouteLocations, routeStopLocation } from "./routeLocations";
 
 const GOOGLE_MAPS_DIRECTIONS_URL = "https://www.google.com/maps/dir/";
 const MOBILE_WAYPOINT_LIMIT = 3;
 const STANDARD_WAYPOINT_LIMIT = 9;
 const SPLIT_LEG_STOP_LIMIT = MOBILE_WAYPOINT_LIMIT + 2;
 
-function hasValidCoordinates(facility: Facility) {
+function hasValidCoordinates(facility: RouteLocation) {
   return (
     Number.isFinite(facility.lat) &&
     Number.isFinite(facility.lng) &&
@@ -14,7 +15,7 @@ function hasValidCoordinates(facility: Facility) {
   );
 }
 
-function googleMapsPlaceQuery(facility: Facility) {
+function googleMapsPlaceQuery(facility: RouteLocation) {
   if (hasValidCoordinates(facility)) return `${facility.lat},${facility.lng}`;
   return [facility.name, facility.address].filter(Boolean).join(", ");
 }
@@ -33,7 +34,7 @@ export function googleMapsWaypointWarning(stopCount: number) {
   return undefined;
 }
 
-export function buildGoogleMapsDirectionsUrl(routeFacilities: Facility[]) {
+export function buildGoogleMapsDirectionsUrl(routeFacilities: RouteLocation[]) {
   if (routeFacilities.length < 2) return undefined;
 
   const origin = routeFacilities[0];
@@ -53,7 +54,7 @@ export function buildGoogleMapsDirectionsUrl(routeFacilities: Facility[]) {
   return `${GOOGLE_MAPS_DIRECTIONS_URL}?${params.toString()}`;
 }
 
-export function splitGoogleMapsDirectionsUrls(routeFacilities: Facility[]) {
+export function splitGoogleMapsDirectionsUrls(routeFacilities: RouteLocation[]) {
   if (routeFacilities.length <= SPLIT_LEG_STOP_LIMIT) return [];
 
   const legs: string[] = [];
@@ -70,11 +71,7 @@ export function splitGoogleMapsDirectionsUrls(routeFacilities: Facility[]) {
 }
 
 export function orderedRouteFacilities(routeStops: RouteStop[], facilities: Facility[]) {
-  const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
-  return [...routeStops]
-    .sort((a, b) => a.order - b.order)
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => Boolean(facility));
+  return orderedRouteLocations(routeStops, facilities);
 }
 
 export function routeFacilitiesWithInsertedAddOn(
@@ -86,8 +83,8 @@ export function routeFacilitiesWithInsertedAddOn(
   const orderedStops = [...routeStops].sort((a, b) => a.order - b.order);
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
   const routeFacilities = orderedStops
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => Boolean(facility));
+    .map((stop) => routeStopLocation(stop, facilityById))
+    .filter((facility): facility is RouteLocation => Boolean(facility));
 
   if (routeFacilities.some((facility) => facility.id === addOnFacility.id)) return routeFacilities;
   if (routeFacilities.length === 0) return [addOnFacility];

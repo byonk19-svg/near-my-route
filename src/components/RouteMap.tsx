@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
-import type { Facility, Opportunity, OutreachLog, RouteStop } from "@/lib/types";
+import type { Facility, Opportunity, OutreachLog, RouteLocation, RouteStop } from "@/lib/types";
 import { routeLineFacilities } from "@/lib/routeCalculations";
+import { hasConfirmedLocation } from "@/lib/locationTrust";
 import {
   deriveTodayStatus,
   todayStatusColor,
@@ -53,7 +54,7 @@ const TypedTooltip = Tooltip as unknown as (props: {
 }) => ReactNode;
 const TypedPopup = Popup as unknown as (props: { children: ReactNode }) => ReactNode;
 
-function hasValidCoordinates(facility?: Facility): facility is Facility {
+function hasValidCoordinates(facility?: RouteLocation): facility is RouteLocation {
   return Boolean(
     facility &&
       Number.isFinite(facility.lat) &&
@@ -98,7 +99,9 @@ export default function RouteMap({
   selectedFacilityId,
   onSelectFacility,
 }: RouteMapProps) {
-  const routeFacilities = routeLineFacilities(routeStops, facilities).filter(hasValidCoordinates);
+  const routeFacilities = routeLineFacilities(routeStops, facilities).filter(
+    (location) => hasValidCoordinates(location) && hasConfirmedLocation(location),
+  );
   const routeFacilityIds = new Set(routeStops.map((stop) => stop.facilityId));
   const opportunityByFacilityId = new Map(
     opportunities.map((opportunity) => [opportunity.facility.id, opportunity]),
@@ -124,35 +127,40 @@ export default function RouteMap({
       ) : null}
       {routeStops.map((stop) => {
         const facility = facilities.find((item) => item.id === stop.facilityId);
-        if (!hasValidCoordinates(facility)) return null;
-        const status = deriveTodayStatus({ facility, outreachLogs, routeStops });
+        const location = stop.privateLocation ?? facility;
+        if (!hasValidCoordinates(location) || !hasConfirmedLocation(location)) return null;
+        const status = facility ? deriveTodayStatus({ facility, outreachLogs, routeStops }) : undefined;
         const routeColor = stop.source === "today_add_on" ? todayStatusColor("added") : "#2563eb";
 
         return (
           <TypedCircleMarker
             key={stop.id}
-            center={[facility.lat, facility.lng]}
+            center={[location.lat, location.lng]}
             radius={13}
             pathOptions={{ color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }}
-            eventHandlers={{ click: () => onSelectFacility(facility.id) }}
+            eventHandlers={facility ? { click: () => onSelectFacility(facility.id) } : undefined}
           >
             <TypedTooltip permanent direction="center" className="pin-label">
               {stop.order}
             </TypedTooltip>
             <TypedPopup>
-              <strong>{facility.name}</strong>
+              <strong>{location.name}</strong>
               <br />
               Stop #{stop.order} - {stop.appointmentTime}
               <br />
-              {todayStatusLabel(status)}
-              <br />
-              <button
-                type="button"
-                onClick={() => onSelectFacility(facility.id)}
-                className="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"
-              >
-                Review
-              </button>
+              {status ? todayStatusLabel(status) : "Private route stop"}
+              {facility ? (
+                <>
+                  <br />
+                  <button
+                    type="button"
+                    onClick={() => onSelectFacility(facility.id)}
+                    className="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    Review
+                  </button>
+                </>
+              ) : null}
             </TypedPopup>
           </TypedCircleMarker>
         );
@@ -220,16 +228,18 @@ export default function RouteMap({
         .sort((a, b) => a.order - b.order)
         .map((stop) => {
           const facility = facilities.find((item) => item.id === stop.facilityId);
-          if (!facility) return null;
+          const location = stop.privateLocation ?? facility;
+          if (!location) return null;
 
           return (
             <button
               key={stop.id}
               type="button"
-              onClick={() => onSelectFacility(facility.id)}
+              disabled={!facility}
+              onClick={() => facility && onSelectFacility(facility.id)}
               className="truncate rounded border border-slate-200 bg-white px-2 py-1 text-left hover:border-blue-200 hover:bg-blue-50"
             >
-              {stop.order}. {facility.name}
+              {stop.order}. {location.name}
             </button>
           );
         })}

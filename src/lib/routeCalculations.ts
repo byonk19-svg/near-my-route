@@ -1,10 +1,11 @@
-import type { Facility, Opportunity, OpportunityOptions, RouteStop } from "./types";
+import type { Facility, Opportunity, OpportunityOptions, RouteLocation, RouteStop } from "./types";
 import { hasConfirmedLocation } from "./locationTrust";
+import { orderedRouteLocations, routeStopLocation } from "./routeLocations";
 
 const EARTH_RADIUS_MILES = 3958.8;
 const URBAN_ROAD_FACTOR = 1.7;
 
-type Point = Pick<Facility, "lat" | "lng">;
+type Point = Pick<RouteLocation, "lat" | "lng">;
 
 export function haversineMiles(a: Point, b: Point): number {
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -86,12 +87,12 @@ export function calculateRouteOpportunities(
 ): Opportunity[] {
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
   const orderedStops = [...routeStops].sort((a, b) => a.order - b.order);
-  const routeFacilities = orderedStops
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => Boolean(facility));
+  const routeLocations = orderedStops
+    .map((stop) => routeStopLocation(stop, facilityById))
+    .filter((location): location is RouteLocation => Boolean(location));
   const routeFacilityIds = new Set(orderedStops.map((stop) => stop.facilityId));
 
-  if (routeFacilities.length === 0 || routeFacilities.some((facility) => !hasConfirmedLocation(facility))) return [];
+  if (routeLocations.length === 0 || routeLocations.some((location) => !hasConfirmedLocation(location))) return [];
 
   return facilities
     .filter((facility) => !routeFacilityIds.has(facility.id))
@@ -109,29 +110,29 @@ export function calculateRouteOpportunities(
         daysSince(facility.lastContacted) >= options.excludeRecentlyContactedDays,
     )
     .map((facility) => {
-      const nearest = routeFacilities.reduce(
-        (best, stopFacility) => {
-          const miles = haversineMiles(facility, stopFacility);
-          return miles < best.distance ? { facility: stopFacility, distance: miles } : best;
+      const nearest = routeLocations.reduce(
+        (best, stopLocation) => {
+          const miles = haversineMiles(facility, stopLocation);
+          return miles < best.distance ? { facility: stopLocation, distance: miles } : best;
         },
-        { facility: routeFacilities[0], distance: Number.POSITIVE_INFINITY },
+        { facility: routeLocations[0], distance: Number.POSITIVE_INFINITY },
       );
 
       const insertionCandidates = orderedStops.flatMap((stop, index) => {
-        const current = facilityById.get(stop.facilityId);
-        if (!current) return [];
+        const currentLocation = routeStopLocation(stop, facilityById);
+        if (!currentLocation) return [];
 
         if (index === 0 && orderedStops.length === 1) {
           return [
             {
               label: "Before Stop #1",
               afterStopId: undefined,
-              addedDistance: haversineMiles(facility, current),
+              addedDistance: haversineMiles(facility, currentLocation),
             },
             {
               label: "After Stop #1",
               afterStopId: stop.id,
-              addedDistance: haversineMiles(current, facility),
+              addedDistance: haversineMiles(currentLocation, facility),
             },
           ];
         }
@@ -141,27 +142,27 @@ export function calculateRouteOpportunities(
           candidates.push({
             label: "Before Stop #1",
             afterStopId: undefined,
-            addedDistance: haversineMiles(facility, current),
+            addedDistance: haversineMiles(facility, currentLocation),
           });
         }
 
         const nextStop = orderedStops[index + 1];
-        const nextFacility = nextStop ? facilityById.get(nextStop.facilityId) : undefined;
+        const nextLocation = nextStop ? routeStopLocation(nextStop, facilityById) : undefined;
 
-        if (nextFacility) {
+        if (nextLocation) {
           candidates.push({
             label: `Best between Stop #${stop.order} and Stop #${nextStop.order}`,
             afterStopId: stop.id,
             addedDistance:
-              haversineMiles(current, facility) +
-              haversineMiles(facility, nextFacility) -
-              haversineMiles(current, nextFacility),
+              haversineMiles(currentLocation, facility) +
+              haversineMiles(facility, nextLocation) -
+              haversineMiles(currentLocation, nextLocation),
           });
         } else {
           candidates.push({
             label: `Best after Stop #${stop.order}`,
             afterStopId: stop.id,
-            addedDistance: haversineMiles(current, facility),
+            addedDistance: haversineMiles(currentLocation, facility),
           });
         }
 
@@ -194,9 +195,5 @@ export function calculateRouteOpportunities(
 }
 
 export function routeLineFacilities(routeStops: RouteStop[], facilities: Facility[]) {
-  const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
-  return [...routeStops]
-    .sort((a, b) => a.order - b.order)
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => Boolean(facility));
+  return orderedRouteLocations(routeStops, facilities);
 }

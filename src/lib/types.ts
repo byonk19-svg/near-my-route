@@ -43,15 +43,28 @@ export type Facility = {
   doNotContact?: boolean;
 };
 
+export type RouteLocation = {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  locationStatus?: LocationStatus;
+  locationSource?: LocationSource;
+  privateRouteStop?: boolean;
+};
+
 export type RouteStop = {
   id: string;
   facilityId: string;
+  privateLocation?: RouteLocation;
   order: number;
   appointmentTime?: string;
   studyCount?: number;
   notes?: string;
   status: "planned" | "confirmed" | "completed" | "tentative";
-  source?: "scheduled" | "today_add_on";
+  source?: "scheduled" | "today_add_on" | "private_route_stop";
+  sourceMapLink?: string;
   addedFromLogId?: string;
   routeImpact?: {
     addedDriveMinutes: number;
@@ -114,5 +127,15 @@ export type ImportReviewRow = {
   studyCount?: number;
   matchedFacilityId?: string;
   confidence: number;
-  action: "needs_review" | "use_existing" | "create_new" | "skip";
+  action: "needs_review" | "use_existing" | "create_new" | "private_route_stop" | "skip";
+  sourceMapLink?: string;
+};
+
+export type VanPacketSummary = {
+  teamMembers: string[];
+  vanName?: string;
+  meetDetails?: string;
+  mapLink?: string;
+  specialInstructions?: string;
+  routeAddresses: string[];
 };

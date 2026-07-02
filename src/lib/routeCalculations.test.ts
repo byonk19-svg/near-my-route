@@ -123,3 +123,42 @@ test("route location helpers identify unconfirmed route stops", () => {
     ["unconfirmed"],
   );
 });
+
+test("calculateRouteOpportunities blocks unconfirmed private stops and uses confirmed private stops", () => {
+  const first = facility("first", 29, -95);
+  const candidate = facility("candidate", 29, -95.5);
+  const privateStop = {
+    ...stop("private-stop-1", 2),
+    source: "private_route_stop" as const,
+    privateLocation: {
+      id: "private-stop-1",
+      name: "Private route stop",
+      address: "100 Example St, Houston, TX",
+      lat: 29,
+      lng: -96,
+      locationStatus: "needs_confirmation" as const,
+      locationSource: "import" as const,
+      privateRouteStop: true,
+    },
+  };
+
+  assert.deepEqual(calculateRouteOpportunities([stop("first", 1), privateStop], [first, candidate], options), []);
+
+  const [opportunity] = calculateRouteOpportunities(
+    [
+      stop("first", 1),
+      {
+        ...privateStop,
+        privateLocation: {
+          ...privateStop.privateLocation,
+          locationStatus: "confirmed",
+        },
+      },
+    ],
+    [first, candidate],
+    options,
+  );
+
+  assert.equal(opportunity.facility.id, "candidate");
+  assert.equal(opportunity.bestInsertionLabel, "Best between Stop #1 and Stop #2");
+});
