@@ -1385,34 +1385,50 @@ function ImportRowControls({
   idPrefix: string;
   onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
 }) {
+  const actions: Array<{ action: ImportReviewRow["action"]; label: string }> = [
+    { action: "use_existing", label: "Use existing facility" },
+    { action: "private_route_stop", label: "Mark private route stop" },
+    { action: "skip", label: "Skip" },
+    { action: "create_new", label: "Create new facility" },
+  ];
+
   return (
     <div id={`${idPrefix}-import-row-controls-${row.id}`}>
-      <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-action`}>
+      <p className="mt-3 text-xs font-bold uppercase text-slate-500" id={`${idPrefix}-${row.id}-action-label`}>
         Action
-      </label>
-      <select
-        id={`${idPrefix}-${row.id}-action`}
-        value={row.action}
-        onChange={(event) => onUpdateRow(row.id, { action: event.target.value as ImportReviewRow["action"] })}
-        className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
+      </p>
+      <div
+        className="mt-1 flex flex-wrap gap-2"
+        role="group"
+        aria-labelledby={`${idPrefix}-${row.id}-action-label`}
       >
-        <option value="needs_review">Needs review</option>
-        <option value="use_existing">Use selected existing facility</option>
-        <option value="create_new">Create new facility</option>
-        <option value="private_route_stop">Private route stop</option>
-        <option value="skip">Skip row</option>
-      </select>
+        {actions.map((item) => (
+          <button
+            key={item.action}
+            type="button"
+            onClick={() => onUpdateRow(row.id, { action: item.action })}
+            className={cx(
+              "rounded-md border px-3 py-2 text-xs font-bold transition",
+              row.action === item.action
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       {row.action === "needs_review" || row.action === "use_existing" ? (
         <FacilityMatchSelect row={row} facilities={facilities} idPrefix={idPrefix} onUpdateRow={onUpdateRow} />
       ) : null}
       <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
         Edit address
       </label>
-      <input
+      <textarea
         id={`${idPrefix}-${row.id}-address`}
         value={row.address}
         onChange={(event) => onUpdateRow(row.id, { address: event.target.value })}
-        className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-900"
+        className="mt-1 min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900"
       />
     </div>
   );
@@ -1425,6 +1441,8 @@ function ImportReviewCards({
   expandedRowIds,
   onToggleRowExpansion,
   onUpdateRow,
+  className = "lg:hidden",
+  showRowIssues = true,
 }: {
   rows: ImportReviewRow[];
   facilities: Facility[];
@@ -1432,17 +1450,19 @@ function ImportReviewCards({
   expandedRowIds: Record<string, boolean>;
   onToggleRowExpansion: (rowId: string) => void;
   onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
+  className?: string;
+  showRowIssues?: boolean;
 }) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 lg:hidden">
+      <div className={cx("rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600", className)}>
         Parse a schedule to review each stop as a mobile card.
       </div>
     );
   }
 
   return (
-    <div className="grid gap-3 lg:hidden">
+    <div className={cx("grid gap-3", className)}>
       {rows.map((row, index) => {
         const matchName = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : undefined;
         const confidenceTone = row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate";
@@ -1468,6 +1488,7 @@ function ImportReviewCards({
                 <p className="mt-1 text-sm text-slate-600">
                   {row.appointmentTime || "Time missing"} - {row.studyCount ?? 0} studies
                 </p>
+                {row.reviewNote ? <p className="mt-1 text-xs font-semibold text-blue-700">{row.reviewNote}</p> : null}
               </div>
               <Badge tone={confidenceTone}>{row.confidence}% match</Badge>
             </div>
@@ -1490,7 +1511,7 @@ function ImportReviewCards({
             {showControls ? (
               <ImportRowControls row={row} facilities={facilities} idPrefix="mobile" onUpdateRow={onUpdateRow} />
             ) : null}
-            {issue ? <p className="mt-2 text-xs font-semibold text-orange-700">{issue}</p> : null}
+            {issue && showRowIssues ? <p className="mt-2 text-xs font-semibold text-orange-700">{issue}</p> : null}
             {showControls || issue ? (
               <details className="mt-3 text-xs text-slate-500">
                 <summary className="cursor-pointer font-bold text-slate-600">Show original text</summary>
@@ -1734,6 +1755,9 @@ export default function NearMyRouteApp() {
     unresolved: importBlockingRows.length,
     confirmed: reviewRows.filter((row) => row.action !== "skip" && !importRowBlockingReason(row)).length,
   };
+  const routeAnchorRows = reviewRows.filter((row) => row.routeOnlyReason === "route_anchor");
+  const visibleImportReviewRows =
+    importMode === "van_packet" ? reviewRows.filter((row) => row.routeOnlyReason !== "route_anchor") : reviewRows;
   const canConfirmImport = reviewRows.length > 0 && importSummary.confirmed > 0 && importSummary.unresolved === 0;
   const confirmImportLabel =
     importSummary.unresolved > 0
@@ -2974,17 +2998,27 @@ export default function NearMyRouteApp() {
                     <span className="font-bold">Map stops:</span> {vanPacketSummary.routeAddresses.length}
                   </p>
                   <p>
-                    <span className="font-bold">Route-only hints:</span> {vanPacketSummary.privateStopHints}
+                    <span className="font-bold">Private stop hints:</span> {vanPacketSummary.privateStopHints}
                   </p>
+                  {vanPacketSummary.routeAnchorHints > 0 ? (
+                    <p>
+                      <span className="font-bold">Route start/end:</span> {vanPacketSummary.routeAnchorHints} skipped
+                    </p>
+                  ) : null}
                   {vanPacketSummary.supplementalTextUsed ? (
                     <p>
                       <span className="font-bold">PDF table:</span> Used for stop review hints
                     </p>
                   ) : null}
-                  {vanPacketSummary.specialInstructions ? (
-                    <p>
-                      <span className="font-bold">Instructions:</span> {vanPacketSummary.specialInstructions}
-                    </p>
+                  {vanPacketSummary.safeNotes?.length ? (
+                    <details className="mt-2 rounded-md border border-blue-200 bg-white/60 p-2">
+                      <summary className="cursor-pointer text-sm font-bold text-blue-800">Review safe notes</summary>
+                      <ul className="mt-2 grid gap-1 text-sm text-slate-700">
+                        {vanPacketSummary.safeNotes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    </details>
                   ) : null}
                 </div>
                 {vanPacketSummary.mapLink ? (
@@ -3036,6 +3070,20 @@ export default function NearMyRouteApp() {
                 Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, mark as a private route stop, or skip the row.
               </div>
             ) : null}
+            {routeAnchorRows.length > 0 ? (
+              <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+                <p className="font-black">Route start/end</p>
+                <div className="mt-2 grid gap-2">
+                  {routeAnchorRows.map((row) => (
+                    <div key={row.id} className="rounded-md border border-blue-100 bg-white px-3 py-2">
+                      <p className="font-bold">{row.facilityName}</p>
+                      <p className="text-xs font-semibold text-blue-700">{row.reviewNote ?? "Skipped from facility review."}</p>
+                      <p className="mt-1 text-xs text-slate-600">{row.address}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {reviewRows.some((row) => row.action === "create_new") ? (
               <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
                 <p>New facility locations must be confirmed before add-on ranking.</p>
@@ -3058,15 +3106,30 @@ export default function NearMyRouteApp() {
             </div>
             <div className="mt-4 lg:hidden">
               <ImportReviewCards
-                rows={reviewRows}
+                rows={visibleImportReviewRows}
                 facilities={facilities}
                 facilityById={facilityById}
                 expandedRowIds={expandedImportRowIds}
                 onToggleRowExpansion={toggleImportRowExpansion}
                 onUpdateRow={updateReviewRow}
+                showRowIssues={importMode !== "van_packet"}
               />
             </div>
-            <div className="mt-4 hidden overflow-x-auto lg:block">
+            {importMode === "van_packet" ? (
+              <div className="mt-4 hidden lg:block">
+                <ImportReviewCards
+                  rows={visibleImportReviewRows}
+                  facilities={facilities}
+                  facilityById={facilityById}
+                  expandedRowIds={expandedImportRowIds}
+                  onToggleRowExpansion={toggleImportRowExpansion}
+                  onUpdateRow={updateReviewRow}
+                  className=""
+                  showRowIssues={false}
+                />
+              </div>
+            ) : null}
+            <div className={cx("mt-4 overflow-x-auto", importMode === "van_packet" ? "hidden" : "hidden lg:block")}>
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>

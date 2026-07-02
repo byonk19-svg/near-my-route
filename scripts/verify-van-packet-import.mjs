@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 const baseUrl = process.env.VAN_PACKET_URL ?? "http://localhost:3018";
 const storageKey = "near-my-route-state-v1";
 const sourceMapLink =
-  "https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX";
+  "https://www.google.com/maps/dir/900+Example+Start,+Houston,+TX/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX/900+Example+Start,+Houston,+TX";
 const packetText = `NAME OF TEAM MEMBERS
 Elaine; Jordan
 
@@ -12,10 +12,12 @@ VAN NAME
 Northwest Van
 
 MEET DETAILS
-Meet at office at 7:30 AM.
+Meet point = 900 Example Start, Houston, TX.
 
 SPECIAL INSTRUCTIONS
-Bring van binder.
+Use side entrance and avoid blocking parking.
+Make a jump drive for facility education.
+Call coordinator 713-555-1212 before arrival.
 Patient: PRIVATE_DETAIL
 DOB 1/1/1960
 Referring MD: PRIVATE_DETAIL
@@ -30,7 +32,7 @@ HOME HEALTH
 Patient: PRIVATE_DETAIL
 Referring MD: PRIVATE_DETAIL
 PARK MANOR WESTCHASE
-11910 RICHMOND AVE, HOUSTON, TX`;
+11910 RICHMOND AVENUE, HOUSTON, TX`;
 
 async function clickVisible(pageOrLocator, name) {
   const buttons = pageOrLocator.getByRole("button", { name });
@@ -91,15 +93,20 @@ try {
 
   const summary = page.getByTestId("van-packet-summary");
   await summary.getByText("Northwest Van").waitFor();
-  await summary.getByText("Map stops: 3").waitFor();
-  await summary.getByText("Route-only hints: 1").waitFor();
+  await summary.getByText("Map stops: 5").waitFor();
+  await summary.getByText("Private stop hints: 1").waitFor();
+  await summary.getByText("Route start/end: 2 skipped").waitFor();
   await summary.getByText("Used for stop review hints").waitFor();
+  await summary.getByText("Review safe notes").waitFor();
   assert.equal(await summary.getByText("PRIVATE_DETAIL").count(), 0);
+  assert.equal(await summary.getByText("713-555-1212").count(), 0);
   assert.equal(await page.getByLabel("Email body and map link").inputValue(), "");
   assert.equal(await page.getByLabel("PDF table text").inputValue(), "");
 
+  await page.getByText("Route start/end", { exact: true }).waitFor();
+  await page.getByText("Duplicate return point skipped").waitFor();
   await page.getByTestId("import-review-card-1").getByRole("heading", { name: "Memorial SNF" }).waitFor();
-  await page.getByTestId("import-review-card-2").getByRole("heading", { name: "Private route stop 2" }).waitFor();
+  await page.getByTestId("import-review-card-2").getByRole("heading", { name: "Private route stop 3" }).waitFor();
   await page.getByTestId("import-review-card-3").getByRole("heading", { name: "Park Manor Westchase" }).waitFor();
   await clickVisible(page, "Confirm 3 Stops");
 
@@ -107,11 +114,11 @@ try {
     page,
     (nextState) =>
       nextState.routeStops?.length === 3 &&
-      nextState.routeStops?.some((stop) => stop.source === "private_route_stop" && stop.privateLocation?.name === "Private route stop 2"),
+      nextState.routeStops?.some((stop) => stop.source === "private_route_stop" && stop.privateLocation?.name === "Private route stop 3"),
     "van packet route with private stop",
   );
   assert.equal(state.facilities.length, initialFacilityCount);
-  assert.equal(state.facilities.some((facility) => facility.name === "Private route stop 2"), false);
+  assert.equal(state.facilities.some((facility) => facility.name === "Private route stop 3"), false);
   assert.equal(state.routeStops.every((stop) => stop.sourceMapLink === sourceMapLink), true);
 
   await page.getByRole("button", { name: "Open original map link" }).first().waitFor();
@@ -124,13 +131,13 @@ try {
 
   await clickVisible(page, "Outreach");
   await page.getByTestId("text-first-card").getByRole("heading", { name: "No uncontacted facility needs a text right now" }).waitFor();
-  assert.equal(await page.getByText("Private route stop 2").count(), 0);
+  assert.equal(await page.getByText("Private route stop 3").count(), 0);
 
   await clickVisible(page, "Near My Route");
   const queue = page.getByTestId("location-confirmation-queue");
-  await queue.getByText("Private route stop 2").waitFor();
-  await queue.getByLabel("Latitude for Private route stop 2").fill("29.7066");
-  await queue.getByLabel("Longitude for Private route stop 2").fill("-95.5492");
+  await queue.getByText("Private route stop 3").waitFor();
+  await queue.getByLabel("Latitude for Private route stop 3").fill("29.7066");
+  await queue.getByLabel("Longitude for Private route stop 3").fill("-95.5492");
   await clickVisible(queue, "Confirm Location");
 
   state = await waitForStoredState(
@@ -139,7 +146,7 @@ try {
       nextState.routeStops?.some(
         (stop) =>
           stop.source === "private_route_stop" &&
-          stop.privateLocation?.name === "Private route stop 2" &&
+          stop.privateLocation?.name === "Private route stop 3" &&
           stop.privateLocation?.locationStatus === "confirmed",
       ),
     "confirmed private route stop",

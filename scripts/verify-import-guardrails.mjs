@@ -153,14 +153,14 @@ async function runGuardrailPath(page) {
   assert.equal(await parkCard.getByLabel("Search existing facilities").isVisible(), true);
   assert.equal(await parkCard.getByLabel("Existing facility").isVisible(), true);
   assert.equal(await parkCard.getByLabel("Edit address").isVisible(), true);
-  await parkCard.locator("select").first().selectOption("skip");
+  await parkCard.getByRole("button", { name: "Skip" }).click();
 
   const cypressCard = page.getByTestId("import-review-card-2");
   assert.equal(await cypressCard.getByLabel("Action").isVisible(), true);
   assert.equal(await cypressCard.getByLabel("Search existing facilities").isVisible(), true);
   assert.equal(await cypressCard.getByLabel("Existing facility").isVisible(), true);
   assert.equal(await cypressCard.getByLabel("Edit address").isVisible(), true);
-  await cypressCard.locator("select").first().selectOption("create_new");
+  await cypressCard.getByRole("button", { name: "Create new facility" }).click();
   await page.getByText("New facility locations must be confirmed before add-on ranking.").first().waitFor();
   assert.equal(await page.getByText("Resolve uncertain rows before confirming.").count(), 0);
 

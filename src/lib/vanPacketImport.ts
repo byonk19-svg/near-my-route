@@ -11,8 +11,30 @@ const FIELD_LABELS = [
 
 const PRIVATE_ROUTE_PATTERN = /\b(home health|homehealth|hh|private residence|residence|home visit|patient home)\b/i;
 const PRIVATE_ROUTE_CONTEXT_PATTERN = /homehealth|homevisit|patienthome|privateresidence|private|residence/i;
-const PRIVATE_DETAIL_PATTERN = /\b(patient|dob|date of birth|mrn|medical record|referring|diagnosis|dx|npo|aspiration|dysphagia|clinical|md)\b/i;
+const PRIVATE_DETAIL_PATTERN = /\b(patient|patients|pts?|dob|date of birth|mrn|medical record|referring|diagnosis|dx|npo|aspiration|dysphagia|clinical|md)\b/i;
+const CONTACT_DETAIL_PATTERN = /(?:\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|[^\s@]+@[^\s@]+\.[^\s@]+)/i;
+const SAFE_OPERATIONAL_NOTE_PATTERN = /\b(park|parking|entrance|enter|door|side of building|dvd|jump drive|binder|facility|fac|staff|schedule)\b/i;
 const NON_FACILITY_STOP_PATTERN = /\b(home depot|meet point|meeting point|meet at|return to)\b/i;
+const ADDRESS_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\binterstate\b/g, "i"],
+  [/\bih\b/g, "i"],
+  [/\bi\s+(\d+)\b/g, "i$1"],
+  [/\bavenue\b/g, "ave"],
+  [/\bboulevard\b/g, "blvd"],
+  [/\bcircle\b/g, "cir"],
+  [/\bcourt\b/g, "ct"],
+  [/\bdrive\b/g, "dr"],
+  [/\bhighway\b/g, "hwy"],
+  [/\blane\b/g, "ln"],
+  [/\bparkway\b/g, "pkwy"],
+  [/\bplace\b/g, "pl"],
+  [/\broad\b/g, "rd"],
+  [/\bstreet\b/g, "st"],
+  [/\bsouth\b/g, "s"],
+  [/\bnorth\b/g, "n"],
+  [/\beast\b/g, "e"],
+  [/\bwest\b/g, "w"],
+];
 
 function labelPattern(label: string) {
   return label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
@@ -64,14 +86,37 @@ export function addressesFromGoogleMapsDirUrl(mapLink?: string) {
   }
 }
 
-function safeSpecialInstructions(value?: string) {
+function safeSpecialInstructionLines(value?: string) {
   if (!value) return undefined;
-  return value
+  const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !PRIVATE_DETAIL_PATTERN.test(line))
-    .join("\n") || undefined;
+    .filter((line) => !CONTACT_DETAIL_PATTERN.test(line))
+    .filter((line) => SAFE_OPERATIONAL_NOTE_PATTERN.test(line));
+  return lines.length > 0 ? lines : undefined;
+}
+
+export function normalizeVanPacketAddress(value: string) {
+  let normalized = value.toLowerCase().replace(/&/g, " and ");
+  normalized = normalized.replace(/\bi[-\s]*(\d+)\b/g, "i$1");
+  for (const [pattern, replacement] of ADDRESS_WORD_REPLACEMENTS) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+  return normalized
+    .replace(/\b(usa|united states|tx|texas)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactRouteValue(value: string) {
+  return normalizeVanPacketAddress(value).replace(/\s+/g, "");
+}
+
+function normalizedNameValues(facility: Facility) {
+  return [facility.name, ...(facility.aliases ?? [])].map(normalizeImportValue).filter(Boolean);
 }
 
 function likelyPrivateRouteStop(address: string) {
@@ -142,19 +187,60 @@ function isPrivateRouteStop(address: string, supplementalText?: string) {
   return Boolean(context && (PRIVATE_ROUTE_PATTERN.test(context) || PRIVATE_ROUTE_CONTEXT_PATTERN.test(context)));
 }
 
-function matchFacility(address: string, facilities: Facility[]) {
-  const normalizedAddress = normalizeImportValue(address);
-  const hasStreetLikeAddress = /^\d/.test(address.trim()) && normalizedAddress.length >= 8;
+function lineLooksLikeAddress(line: string) {
+  return /^\s*\d{1,6}\b/.test(line) || /\b\d{1,6}\s+[^,\n]+,\s*[^,\n]+/i.test(line);
+}
+
+function stopContext(text: string | undefined, address: string) {
+  const key = stopKey(address);
+  if (!text || !key) return undefined;
+  const normalizedKey = normalizeImportValue(key);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const index = lines.findIndex((line) => normalizeImportValue(line).includes(normalizedKey));
+  if (index < 0) return undefined;
+  const previousLabel = [...lines.slice(Math.max(0, index - 3), index)]
+    .reverse()
+    .find((line) => !PRIVATE_DETAIL_PATTERN.test(line) && !CONTACT_DETAIL_PATTERN.test(line) && !lineLooksLikeAddress(line));
+  return {
+    previousLabel,
+    context: [previousLabel, lines[index], lines[index + 1]].filter(Boolean).join("\n"),
+  };
+}
+
+function matchFacility(address: string, facilities: Facility[], nameHint?: string) {
+  const normalizedAddress = normalizeVanPacketAddress(address);
+  const compactAddress = compactRouteValue(address);
+  const normalizedNameHint = normalizeImportValue(nameHint ?? "");
+  const hasStreetLikeAddress = /^\d/.test(address.trim()) && compactAddress.length >= 8;
 
   return facilities
     .map((facility) => {
-      const facilityAddress = normalizeImportValue(facility.address);
-      const facilityName = normalizeImportValue(facility.name);
+      const facilityAddress = normalizeVanPacketAddress(facility.address);
+      const compactFacilityAddress = compactRouteValue(facility.address);
+      const facilityNames = normalizedNameValues(facility);
       let confidence = 0;
 
-      if (normalizedAddress && (facilityAddress === normalizedAddress || normalizedAddress.includes(facilityAddress))) confidence += 95;
-      else if (hasStreetLikeAddress && facilityAddress.includes(normalizedAddress.slice(0, 8))) confidence += 65;
-      if (facilityName && normalizedAddress.includes(facilityName)) confidence += 30;
+      if (compactAddress && compactFacilityAddress === compactAddress) confidence += 95;
+      else if (compactAddress && (compactAddress.includes(compactFacilityAddress) || compactFacilityAddress.includes(compactAddress))) {
+        confidence += 80;
+      } else if (hasStreetLikeAddress && compactFacilityAddress.includes(compactAddress.slice(0, 8))) {
+        confidence += 65;
+      }
+
+      if (normalizedAddress && facilityAddress && normalizedAddress.includes(facilityAddress)) confidence += 20;
+
+      if (normalizedNameHint) {
+        const nameMatch = facilityNames.some(
+          (facilityName) =>
+            facilityName === normalizedNameHint ||
+            facilityName.includes(normalizedNameHint) ||
+            normalizedNameHint.includes(facilityName),
+        );
+        if (nameMatch) confidence += 55;
+      }
+
+      const addressContainsName = facilityNames.some((facilityName) => facilityName && normalizeImportValue(address).includes(facilityName));
+      if (addressContainsName) confidence += 30;
 
       return { facility, confidence: Math.min(confidence, 99) };
     })
@@ -177,40 +263,58 @@ export function parseVanPacketText(
   const routeAddresses = addressesFromGoogleMapsDirUrl(mapLink);
   const meetDetails = fieldValue(text, "MEET DETAILS");
   const supplementalText = options?.supplementalText;
-  const routeStopKinds = routeAddresses.map((address) => ({
-    isMeet: isMeetRouteStop(address, meetDetails),
-    isPrivate: isPrivateRouteStop(address, supplementalText),
-  }));
+  const routeStopKinds = routeAddresses.map((address, index) => {
+    const isDuplicateReturn =
+      index > 0 && index === routeAddresses.length - 1 && compactRouteValue(address) === compactRouteValue(routeAddresses[0] ?? "");
+    const context = stopContext(supplementalText, address);
+    return {
+      isMeet: isMeetRouteStop(address, meetDetails) || isDuplicateReturn,
+      isPrivate: isPrivateRouteStop(address, supplementalText),
+      nameHint: context?.previousLabel,
+      isDuplicateReturn,
+    };
+  });
+  const safeNotes = safeSpecialInstructionLines(fieldValue(text, "SPECIAL INSTRUCTIONS"));
   const summary: VanPacketSummary = {
     teamMembers: splitNames(fieldValue(text, "NAME OF TEAM MEMBERS")),
     vanName: fieldValue(text, "VAN NAME"),
     meetDetails,
     mapLink,
-    specialInstructions: safeSpecialInstructions(fieldValue(text, "SPECIAL INSTRUCTIONS")),
+    specialInstructions: safeNotes?.join("\n"),
+    safeNotes,
     routeAddresses,
     supplementalTextUsed: Boolean(supplementalText?.trim()),
-    privateStopHints: routeStopKinds.filter((kind) => kind.isPrivate || kind.isMeet).length,
+    privateStopHints: routeStopKinds.filter((kind) => kind.isPrivate).length,
+    routeAnchorHints: routeStopKinds.filter((kind) => kind.isMeet).length,
   };
 
   const rows = routeAddresses.map((address, index) => {
-    const match = matchFacility(address, facilities);
+    const rowKind = routeStopKinds[index];
+    const match = matchFacility(address, facilities, rowKind?.nameHint);
     const confidence = match?.confidence ?? 0;
     const suggestedFacility = confidence > 0 ? match?.facility : undefined;
     const autoUseExisting = Boolean(suggestedFacility?.id && confidence >= 75);
-    const privateRouteStop = routeStopKinds[index]?.isPrivate ?? false;
-    const meetRouteStop = routeStopKinds[index]?.isMeet ?? false;
-    const routeOnlyStop = privateRouteStop || meetRouteStop;
+    const privateRouteStop = rowKind?.isPrivate ?? false;
+    const meetRouteStop = rowKind?.isMeet ?? false;
 
     return {
       id: `van-packet-${index}-${Date.now()}`,
       raw: address,
-      facilityName: routeOnlyStop
+      facilityName: privateRouteStop || meetRouteStop
         ? facilityNameFromAddress(address, index, { isPrivate: privateRouteStop, isMeet: meetRouteStop })
         : suggestedFacility?.name ?? facilityNameFromAddress(address, index),
       address,
-      matchedFacilityId: routeOnlyStop ? undefined : suggestedFacility?.id,
-      confidence: routeOnlyStop ? 0 : confidence,
-      action: routeOnlyStop ? "private_route_stop" : autoUseExisting ? "use_existing" : "needs_review",
+      reviewNote: meetRouteStop
+        ? rowKind?.isDuplicateReturn
+          ? "Duplicate return point skipped. Use the original map link for the full source route."
+          : "Meet/start point skipped by default so it does not need facility review."
+        : rowKind?.nameHint
+          ? `PDF label hint: ${rowKind.nameHint}`
+          : undefined,
+      routeOnlyReason: meetRouteStop ? "route_anchor" : privateRouteStop ? "private" : undefined,
+      matchedFacilityId: privateRouteStop || meetRouteStop ? undefined : suggestedFacility?.id,
+      confidence: privateRouteStop || meetRouteStop ? 0 : confidence,
+      action: meetRouteStop ? "skip" : privateRouteStop ? "private_route_stop" : autoUseExisting ? "use_existing" : "needs_review",
       sourceMapLink: mapLink,
     } satisfies ImportReviewRow;
   });
