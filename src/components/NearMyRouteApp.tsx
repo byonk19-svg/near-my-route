@@ -459,7 +459,11 @@ function LocationConfirmationCard({
       return;
     }
     if (!parsedCoordinates) {
-      setMapsUrlIssue("No usable coordinates were found in that Google Maps URL.");
+      setMapsUrlIssue(
+        mapsUrl.toLowerCase().includes("/maps/search/")
+          ? "This looks like a Google Maps search URL, not a resolved pin URL. Open it in Google Maps, select the facility pin, then copy a URL that includes @latitude,longitude or !3d/!4d coordinates."
+          : "No usable coordinates were found in that Google Maps URL.",
+      );
       return;
     }
 

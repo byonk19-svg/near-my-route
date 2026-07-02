@@ -99,6 +99,15 @@ try {
   await queue.getByText("Edit the fallback coordinates before confirming this location.").waitFor();
   await queue
     .getByLabel("Google Maps URL for Cypress Care")
+    .fill("https://www.google.com/maps/search/?api=1&query=Cypress%20Care%2C%20100%20New%20Rd%2C%20Houston%2C%20TX");
+  await clickVisible(queue, "Use coordinates from URL");
+  await queue
+    .getByText(
+      "This looks like a Google Maps search URL, not a resolved pin URL. Open it in Google Maps, select the facility pin, then copy a URL that includes @latitude,longitude or !3d/!4d coordinates.",
+    )
+    .waitFor();
+  await queue
+    .getByLabel("Google Maps URL for Cypress Care")
     .fill("https://www.google.com/maps/place/Cypress+Care/@29.1,-95.1,17z/data=!3d29.7066!4d-95.5492");
   await queue.getByRole("button", { name: "Use coordinates from URL" }).waitFor();
   await clickVisible(queue, "Use coordinates from URL");
