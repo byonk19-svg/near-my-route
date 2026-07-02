@@ -174,6 +174,12 @@ test("guardrails block unresolved, unselected, and placeholder create-new rows",
     facilityName: "Unknown",
     address: "100 New Rd, Houston, TX",
   };
+  const blankName: ImportReviewRow = {
+    ...blankAddress,
+    id: "blank-name",
+    facilityName: " ",
+    address: "100 New Rd, Houston, TX",
+  };
 
   assert.equal(
     importRowBlockingReason(needsReview),
@@ -181,5 +187,6 @@ test("guardrails block unresolved, unselected, and placeholder create-new rows",
   );
   assert.equal(importRowBlockingReason(missingExisting), "Select an existing facility before confirming.");
   assert.equal(importRowBlockingReason(blankAddress), "Add a full address before creating a new facility.");
+  assert.equal(importRowBlockingReason(blankName), "Add a real facility name or skip this row.");
   assert.equal(importRowBlockingReason(placeholderName), "Add a real facility name or skip this row.");
 });

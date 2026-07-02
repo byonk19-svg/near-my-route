@@ -1433,6 +1433,17 @@ function ImportRowControls({
           <span>Remember &quot;{row.aliasCandidate}&quot; as an alias for this facility</span>
         </label>
       ) : null}
+      {row.action === "create_new" ? (
+        <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-facility-name`}>
+          New facility name
+          <input
+            id={`${idPrefix}-${row.id}-facility-name`}
+            value={row.facilityName}
+            onChange={(event) => onUpdateRow(row.id, { facilityName: event.target.value })}
+            className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case text-slate-900"
+          />
+        </label>
+      ) : null}
       <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
         Edit address
       </label>
@@ -3241,6 +3252,17 @@ export default function NearMyRouteApp() {
                               </p>
                             ) : (
                               <>
+                                {row.action === "create_new" ? (
+                                  <label className="mb-2 block text-xs font-bold uppercase text-slate-500">
+                                    New facility name
+                                    <input
+                                      aria-label={`New facility name for ${row.facilityName}`}
+                                      value={row.facilityName}
+                                      onChange={(event) => updateReviewRow(row.id, { facilityName: event.target.value })}
+                                      className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+                                    />
+                                  </label>
+                                ) : null}
                                 <input
                                   aria-label={`Address for ${row.facilityName}`}
                                   value={row.address}
