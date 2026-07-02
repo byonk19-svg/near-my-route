@@ -61,7 +61,7 @@ import {
   type OutreachQueueItem,
 } from "@/lib/outreachPriority";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
-import { hasConfirmedLocation, unconfirmedRouteFacilities } from "@/lib/locationTrust";
+import { hasConfirmedLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -348,6 +348,129 @@ function BestAddOnCard({
         </Button>
       </div>
     </section>
+  );
+}
+
+function LocationConfirmationQueue({
+  facilities,
+  routeFacilityIds,
+  onConfirm,
+}: {
+  facilities: Facility[];
+  routeFacilityIds: Set<string>;
+  onConfirm: (facilityId: string, patch: { address: string; lat: number; lng: number }) => void;
+}) {
+  const pendingFacilities = facilities
+    .filter((facility) => facility.locationStatus === "needs_confirmation")
+    .sort((a, b) => Number(routeFacilityIds.has(b.id)) - Number(routeFacilityIds.has(a.id)) || a.name.localeCompare(b.name));
+
+  if (pendingFacilities.length === 0) return null;
+
+  return (
+    <section data-testid="location-confirmation-queue" className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700">Location review</p>
+          <h2 className="mt-1 text-sm font-black text-slate-950">Needs location confirmation</h2>
+        </div>
+        <Badge tone="orange">{pendingFacilities.length}</Badge>
+      </div>
+      <div className="mt-3 space-y-3">
+        {pendingFacilities.map((facility) => (
+          <LocationConfirmationCard
+            key={facility.id}
+            facility={facility}
+            isRouteStop={routeFacilityIds.has(facility.id)}
+            onConfirm={onConfirm}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LocationConfirmationCard({
+  facility,
+  isRouteStop,
+  onConfirm,
+}: {
+  facility: Facility;
+  isRouteStop: boolean;
+  onConfirm: (facilityId: string, patch: { address: string; lat: number; lng: number }) => void;
+}) {
+  const [address, setAddress] = useState(facility.address);
+  const [lat, setLat] = useState(String(facility.lat));
+  const [lng, setLng] = useState(String(facility.lng));
+  const [issue, setIssue] = useState<string | undefined>();
+
+  function parseCoordinate(value: string) {
+    const trimmed = value.trim();
+    return trimmed ? Number(trimmed) : Number.NaN;
+  }
+
+  function confirmLocation() {
+    const nextLocation = {
+      address: address.trim(),
+      lat: parseCoordinate(lat),
+      lng: parseCoordinate(lng),
+    };
+    const nextIssue = locationConfirmationIssue(nextLocation);
+    setIssue(nextIssue);
+    if (nextIssue) return;
+    onConfirm(facility.id, nextLocation);
+  }
+
+  return (
+    <article className="rounded-lg border border-orange-200 bg-white p-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-black text-slate-950">{facility.name}</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Source: {friendlyValue(facility.locationSource ?? "import")}
+          </p>
+        </div>
+        {isRouteStop ? <Badge tone="orange">On route</Badge> : null}
+      </div>
+      <label className="mt-3 block text-[11px] font-bold uppercase text-slate-500">
+        Address
+        <input
+          aria-label={`Address for ${facility.name}`}
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+        />
+      </label>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <label className="block text-[11px] font-bold uppercase text-slate-500">
+          Latitude
+          <input
+            aria-label={`Latitude for ${facility.name}`}
+            value={lat}
+            onChange={(event) => setLat(event.target.value)}
+            inputMode="decimal"
+            className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+          />
+        </label>
+        <label className="block text-[11px] font-bold uppercase text-slate-500">
+          Longitude
+          <input
+            aria-label={`Longitude for ${facility.name}`}
+            value={lng}
+            onChange={(event) => setLng(event.target.value)}
+            inputMode="decimal"
+            className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+          />
+        </label>
+      </div>
+      {issue ? (
+        <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+          {issue}
+        </p>
+      ) : null}
+      <Button className="mt-3 w-full" tone="primary" onClick={confirmLocation}>
+        <Check size={15} /> Confirm Location
+      </Button>
+    </article>
   );
 }
 
@@ -1560,6 +1683,7 @@ export default function NearMyRouteApp() {
   );
   const responseQueue = remainingQueue.filter((item) => item.status !== "not_contacted");
   const todayCounts = todayStatusSummary([...todayStatusByFacilityId.values()]);
+  const firstPendingLocationFacility = facilities.find((facility) => facility.locationStatus === "needs_confirmation");
   const currentRouteStatusCounts = todayStatusSummary(
     orderedRouteStops
       .map((stop) => todayStatusByFacilityId.get(stop.facilityId))
@@ -1580,6 +1704,7 @@ export default function NearMyRouteApp() {
       : `Confirm ${importSummary.confirmed} ${importSummary.confirmed === 1 ? "Stop" : "Stops"}`;
   const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
   const currentRouteUnconfirmedFacilities = unconfirmedRouteFacilities(orderedRouteStops, facilities);
+  const currentRouteFacilityIds = new Set(orderedRouteStops.map((stop) => stop.facilityId));
   const currentRouteLocationWarning =
     currentRouteUnconfirmedFacilities.length > 0
       ? `Route includes unconfirmed locations: ${currentRouteUnconfirmedFacilities.map((facility) => facility.name).join(", ")}. Confirm location before trusting add-on ranking or Maps handoff.`
@@ -1782,6 +1907,24 @@ export default function NearMyRouteApp() {
         };
       }),
     );
+  }
+
+  function confirmFacilityLocation(facilityId: string, patch: { address: string; lat: number; lng: number }) {
+    setFacilities((current) =>
+      current.map((facility) =>
+        facility.id === facilityId
+          ? {
+              ...facility,
+              address: patch.address,
+              lat: patch.lat,
+              lng: patch.lng,
+              locationStatus: "confirmed",
+              locationSource: facility.locationSource === "import" ? "import" : "geocoded",
+            }
+          : facility,
+      ),
+    );
+    setSelectedFacilityId(facilityId);
   }
 
   function parseImportSchedule() {
@@ -2217,9 +2360,15 @@ export default function NearMyRouteApp() {
                 </p>
               ) : null}
               {currentRouteLocationWarning ? (
-                <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
-                  {currentRouteLocationWarning}
-                </p>
+                <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 text-xs font-bold text-orange-800">
+                  <p>{currentRouteLocationWarning}</p>
+                  <Button
+                    className="mt-2"
+                    onClick={() => openRouteHome(currentRouteUnconfirmedFacilities[0]?.id ?? selectedFacilityId)}
+                  >
+                    Review locations
+                  </Button>
+                </div>
               ) : null}
               {currentRouteSplitUrls.length > 0 ? (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -2260,6 +2409,12 @@ export default function NearMyRouteApp() {
                 })}
               </div>
             </div>
+
+            <LocationConfirmationQueue
+              facilities={facilities}
+              routeFacilityIds={currentRouteFacilityIds}
+              onConfirm={confirmFacilityLocation}
+            />
 
             {dogfoodNoteWarning ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800 lg:hidden">
@@ -2703,7 +2858,12 @@ export default function NearMyRouteApp() {
             ) : null}
             {reviewRows.some((row) => row.action === "create_new") ? (
               <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
-                New facility locations must be confirmed before add-on ranking.
+                <p>New facility locations must be confirmed before add-on ranking.</p>
+                {firstPendingLocationFacility ? (
+                  <Button className="mt-2" onClick={() => openRouteHome(firstPendingLocationFacility.id)}>
+                    Review locations
+                  </Button>
+                ) : null}
               </div>
             ) : null}
             <div className="mt-4 lg:hidden">
@@ -2856,9 +3016,15 @@ export default function NearMyRouteApp() {
               Work today&apos;s facility responses first. Templates intentionally avoid PHI.
             </p>
             {currentRouteLocationWarning ? (
-              <p className="mt-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
-                {currentRouteLocationWarning}
-              </p>
+              <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                <p>{currentRouteLocationWarning}</p>
+                <Button
+                  className="mt-2"
+                  onClick={() => openRouteHome(currentRouteUnconfirmedFacilities[0]?.id ?? selectedFacilityId)}
+                >
+                  Review locations
+                </Button>
+              </div>
             ) : null}
             <div className="mt-4">
               <TodayStatusStrip counts={todayCounts} />

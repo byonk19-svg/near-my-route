@@ -11,6 +11,7 @@
     "test:e2e:outreach-priority": "node scripts/verify-outreach-priority.mjs",
     "test:e2e:dogfood": "node scripts/verify-dogfood-route-flow.mjs",
     "test:e2e:contacts": "node scripts/verify-contact-data-setup.mjs",
+    "test:e2e:location-confirmation": "node scripts/verify-location-confirmation.mjs",
     "start": "next start",
     "lint": "eslint"
   },

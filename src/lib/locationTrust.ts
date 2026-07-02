@@ -18,6 +18,18 @@ export function hasConfirmedLocation(facility?: Pick<Facility, "locationStatus">
   return facility?.locationStatus === "confirmed";
 }
 
+export function locationConfirmationIssue(location: Pick<Facility, "address" | "lat" | "lng">) {
+  if (!location.address.trim()) return "Add a full address before confirming this location.";
+  if (!Number.isFinite(location.lat) || location.lat < -90 || location.lat > 90) {
+    return "Enter a valid latitude before confirming this location.";
+  }
+  if (!Number.isFinite(location.lng) || location.lng < -180 || location.lng > 180) {
+    return "Enter a valid longitude before confirming this location.";
+  }
+  if (isFallbackLocation(location)) return "Edit the fallback coordinates before confirming this location.";
+  return undefined;
+}
+
 export function unconfirmedRouteFacilities(routeStops: RouteStop[], facilities: Facility[]) {
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
   return routeStops
