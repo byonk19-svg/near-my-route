@@ -1,5 +1,6 @@
 import type { Facility, ImportReviewRow, VanPacketSummary } from "./types";
 import { normalizeImportValue } from "./scheduleImport";
+import { facilityAliasValues, isSafeFacilityAlias, sanitizeFacilityAlias } from "./facilityAliases";
 
 const FIELD_LABELS = [
   "NAME OF TEAM MEMBERS",
@@ -115,10 +116,6 @@ function compactRouteValue(value: string) {
   return normalizeVanPacketAddress(value).replace(/\s+/g, "");
 }
 
-function normalizedNameValues(facility: Facility) {
-  return [facility.name, ...(facility.aliases ?? [])].map(normalizeImportValue).filter(Boolean);
-}
-
 function likelyPrivateRouteStop(address: string) {
   return PRIVATE_ROUTE_PATTERN.test(address);
 }
@@ -201,8 +198,10 @@ function stopContext(text: string | undefined, address: string) {
   const previousLabel = [...lines.slice(Math.max(0, index - 3), index)]
     .reverse()
     .find((line) => !PRIVATE_DETAIL_PATTERN.test(line) && !CONTACT_DETAIL_PATTERN.test(line) && !lineLooksLikeAddress(line));
+  const aliasCandidate = sanitizeFacilityAlias(previousLabel);
   return {
-    previousLabel,
+    previousLabel: aliasCandidate && isSafeFacilityAlias(aliasCandidate) ? aliasCandidate : previousLabel,
+    aliasCandidate: aliasCandidate && isSafeFacilityAlias(aliasCandidate) ? aliasCandidate : undefined,
     context: [previousLabel, lines[index], lines[index + 1]].filter(Boolean).join("\n"),
   };
 }
@@ -217,17 +216,19 @@ function matchFacility(address: string, facilities: Facility[], nameHint?: strin
     .map((facility) => {
       const facilityAddress = normalizeVanPacketAddress(facility.address);
       const compactFacilityAddress = compactRouteValue(facility.address);
-      const facilityNames = normalizedNameValues(facility);
+      const facilityNames = facilityAliasValues(facility).map(normalizeImportValue);
       let confidence = 0;
+      let addressScore = 0;
+      let nameScore = 0;
 
-      if (compactAddress && compactFacilityAddress === compactAddress) confidence += 95;
+      if (compactAddress && compactFacilityAddress === compactAddress) addressScore = 95;
       else if (compactAddress && (compactAddress.includes(compactFacilityAddress) || compactFacilityAddress.includes(compactAddress))) {
-        confidence += 80;
+        addressScore = 80;
       } else if (hasStreetLikeAddress && compactFacilityAddress.includes(compactAddress.slice(0, 8))) {
-        confidence += 65;
+        addressScore = 65;
       }
 
-      if (normalizedAddress && facilityAddress && normalizedAddress.includes(facilityAddress)) confidence += 20;
+      if (normalizedAddress && facilityAddress && normalizedAddress.includes(facilityAddress)) addressScore = Math.max(addressScore, 65);
 
       if (normalizedNameHint) {
         const nameMatch = facilityNames.some(
@@ -236,12 +237,13 @@ function matchFacility(address: string, facilities: Facility[], nameHint?: strin
             facilityName.includes(normalizedNameHint) ||
             normalizedNameHint.includes(facilityName),
         );
-        if (nameMatch) confidence += 55;
+        if (nameMatch) nameScore = 55;
       }
 
       const addressContainsName = facilityNames.some((facilityName) => facilityName && normalizeImportValue(address).includes(facilityName));
-      if (addressContainsName) confidence += 30;
+      if (addressContainsName) nameScore = Math.max(nameScore, 30);
 
+      confidence = addressScore + nameScore;
       return { facility, confidence: Math.min(confidence, 99) };
     })
     .sort((a, b) => b.confidence - a.confidence)[0];
@@ -270,7 +272,7 @@ export function parseVanPacketText(
     return {
       isMeet: isMeetRouteStop(address, meetDetails) || isDuplicateReturn,
       isPrivate: isPrivateRouteStop(address, supplementalText),
-      nameHint: context?.previousLabel,
+      aliasCandidate: context?.aliasCandidate,
       isDuplicateReturn,
     };
   });
@@ -290,12 +292,21 @@ export function parseVanPacketText(
 
   const rows = routeAddresses.map((address, index) => {
     const rowKind = routeStopKinds[index];
-    const match = matchFacility(address, facilities, rowKind?.nameHint);
+    const match = matchFacility(address, facilities, rowKind?.aliasCandidate);
     const confidence = match?.confidence ?? 0;
     const suggestedFacility = confidence > 0 ? match?.facility : undefined;
     const autoUseExisting = Boolean(suggestedFacility?.id && confidence >= 75);
-    const privateRouteStop = rowKind?.isPrivate ?? false;
+    const privateRouteStop = (rowKind?.isPrivate ?? false) && !autoUseExisting;
     const meetRouteStop = rowKind?.isMeet ?? false;
+    const aliasCandidate = rowKind?.aliasCandidate;
+    const aliasNote =
+      aliasCandidate && !autoUseExisting
+        ? suggestedFacility
+          ? "Possible known facility label. Confirm the facility to remember this alias."
+          : "PDF label hint. Select the facility to remember this alias."
+        : aliasCandidate
+          ? `PDF label hint: ${aliasCandidate}`
+          : undefined;
 
     return {
       id: `van-packet-${index}-${Date.now()}`,
@@ -308,10 +319,11 @@ export function parseVanPacketText(
         ? rowKind?.isDuplicateReturn
           ? "Duplicate return point skipped. Use the original map link for the full source route."
           : "Meet/start point skipped by default so it does not need facility review."
-        : rowKind?.nameHint
-          ? `PDF label hint: ${rowKind.nameHint}`
+        : aliasNote
+          ? aliasNote
           : undefined,
       routeOnlyReason: meetRouteStop ? "route_anchor" : privateRouteStop ? "private" : undefined,
+      aliasCandidate: privateRouteStop || meetRouteStop ? undefined : aliasCandidate,
       matchedFacilityId: privateRouteStop || meetRouteStop ? undefined : suggestedFacility?.id,
       confidence: privateRouteStop || meetRouteStop ? 0 : confidence,
       action: meetRouteStop ? "skip" : privateRouteStop ? "private_route_stop" : autoUseExisting ? "use_existing" : "needs_review",

@@ -1,5 +1,6 @@
 import type { Facility, ImportReviewRow, RouteStop } from "./types";
 import { FALLBACK_LOCATION_COORDINATES } from "./locationTrust";
+import { appendFacilityAlias } from "./facilityAliases";
 
 const TRAILING_STUDY_COUNT_PATTERN = /,?\s*(\d+)\s*(study|studies)\s*$/i;
 const LEADING_TIME_PATTERN = /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*,?\s*/i;
@@ -170,6 +171,11 @@ export function applyImportRows(
       }
 
       if (!facilityId) return;
+
+      if (row.action === "use_existing" && row.rememberAlias && row.aliasCandidate) {
+        const updatedFacilities = appendFacilityAlias(nextFacilities, facilityId, row.aliasCandidate);
+        nextFacilities.splice(0, nextFacilities.length, ...updatedFacilities);
+      }
 
       routeStops.push({
         id: `stop-${Date.now()}-${index}`,
