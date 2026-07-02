@@ -1,7 +1,7 @@
 import type { Facility } from "./types";
 
 const PRIVATE_OR_CLINICAL_PATTERN =
-  /\b(patient|patients|pt|pts|dob|date of birth|mrn|medical record|referring|diagnosis|dx|npo|aspiration|dysphagia|clinical|home health|patient home|hh)\b/i;
+  /\b(patient|patients|pt|pts|dob|date of birth|mrn|medical record|referring|diagnosis|dx|npo|aspiration|dysphagia|clinical|hh|private|residence)\b|home\s*-?\s*health|patient\s+home/i;
 const CONTACT_PATTERN = /(?:\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|[^\s@]+@[^\s@]+\.[^\s@]+)/i;
 const OPERATIONAL_MARKER_PATTERN =
   /\b(?:initial|confirmed|address|new pt|f\/u|status|comments|spoke with|slp|txt|text|call|must|please)\b/gi;

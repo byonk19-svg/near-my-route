@@ -22,6 +22,11 @@ test("isSafeFacilityAlias rejects private, contact, blank, and generic labels", 
   assert.equal(isSafeFacilityAlias("RESORT KATY"), true);
   assert.equal(isSafeFacilityAlias("HOSPITAL KATY"), true);
   assert.equal(isSafeFacilityAlias("Patient Home"), false);
+  assert.equal(isSafeFacilityAlias("HOMEHEALTH"), false);
+  assert.equal(isSafeFacilityAlias("HOME-HEALTH"), false);
+  assert.equal(isSafeFacilityAlias("PRIVATE RESIDENCE"), false);
+  assert.equal(isSafeFacilityAlias("PRIVATE"), false);
+  assert.equal(isSafeFacilityAlias("RESIDENCE"), false);
   assert.equal(isSafeFacilityAlias("713-555-1212"), false);
   assert.equal(isSafeFacilityAlias("facility"), false);
 });
