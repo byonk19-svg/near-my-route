@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initialFacilities } from "./mockData";
-import { addressesFromGoogleMapsDirUrl, parseVanPacketText } from "./vanPacketImport";
+import { addressesFromGoogleMapsDirUrl, normalizeVanPacketAddress, parseVanPacketText } from "./vanPacketImport";
 
 test("addressesFromGoogleMapsDirUrl decodes ordered /dir/ path segments", () => {
   const addresses = addressesFromGoogleMapsDirUrl(
@@ -43,6 +43,7 @@ https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/Hom
   assert.equal(result.summary.routeAddresses.length, 3);
   assert.equal(result.summary.supplementalTextUsed, false);
   assert.equal(result.summary.privateStopHints, 1);
+  assert.equal(result.summary.routeAnchorHints, 0);
 
   assert.equal(result.rows[0].action, "use_existing");
   assert.equal(result.rows[0].matchedFacilityId, "memorial-snf");
@@ -71,16 +72,80 @@ Referring MD: PRIVATE_DETAIL`;
   const result = parseVanPacketText(packet, initialFacilities, { supplementalText: pdfText });
 
   assert.equal(result.summary.supplementalTextUsed, true);
-  assert.equal(result.summary.privateStopHints, 3);
-  assert.equal(result.summary.specialInstructions, "HOME HEALTH ADDRESS CONFIRMED 0701MH");
-  assert.equal(result.rows[0].action, "private_route_stop");
+  assert.equal(result.summary.privateStopHints, 1);
+  assert.equal(result.summary.routeAnchorHints, 2);
+  assert.equal(result.summary.specialInstructions, undefined);
+  assert.equal(result.rows[0].action, "skip");
   assert.equal(result.rows[0].facilityName, "Meet point 1");
+  assert.equal(result.rows[0].routeOnlyReason, "route_anchor");
   assert.equal(result.rows[1].action, "use_existing");
   assert.equal(result.rows[1].matchedFacilityId, "memorial-snf");
+  assert.equal(result.rows[1].reviewNote, "PDF label hint: MEMORIAL SNF");
   assert.equal(result.rows[2].action, "private_route_stop");
   assert.equal(result.rows[2].facilityName, "Private route stop 3");
   assert.equal(result.rows[2].matchedFacilityId, undefined);
-  assert.equal(result.rows[3].action, "private_route_stop");
+  assert.equal(result.rows[2].routeOnlyReason, "private");
+  assert.equal(result.rows[3].action, "skip");
   assert.equal(result.rows[3].facilityName, "Meet point 4");
+  assert.equal(result.rows[3].routeOnlyReason, "route_anchor");
   assert.equal(JSON.stringify(result).includes("PRIVATE_DETAIL"), false);
+});
+
+test("normalizeVanPacketAddress handles common roadway variants", () => {
+  assert.equal(normalizeVanPacketAddress("18550 Interstate 45 South, Conroe, TX"), normalizeVanPacketAddress("18550 I-45 S, Conroe, Texas"));
+  assert.equal(normalizeVanPacketAddress("117 Vision Park Boulevard"), normalizeVanPacketAddress("117 Vision Park Blvd"));
+  assert.equal(normalizeVanPacketAddress("27840 Johnson Road"), normalizeVanPacketAddress("27840 Johnson Rd"));
+  assert.equal(normalizeVanPacketAddress("2331 Grand Reserve Drive"), normalizeVanPacketAddress("2331 Grand Reserve Dr"));
+});
+
+test("parseVanPacketText uses PDF label hints and does not assign random zero-confidence matches", () => {
+  const facilities = [
+    {
+      id: "sample-rehab",
+      name: "Sample Rehab North",
+      address: "18550 Interstate 45 South, Conroe, TX 77384",
+      lat: 30.1,
+      lng: -95.4,
+      contacts: [],
+    },
+  ];
+  const packet = `NAME OF TEAM MEMBERS
+Driver One
+VAN NAME
+Sample Van
+MAP LINK
+https://www.google.com/maps/dir/18550+I-45+S,+Conroe,+TX+77384/710+Farm+Road,+Example,+TX`;
+  const pdfText = `SAMPLE REHAB NORTH
+18550 I-45 SOUTH, CONROE, TX 77384
+UNMATCHED STOP
+710 FARM ROAD, EXAMPLE, TX`;
+
+  const result = parseVanPacketText(packet, facilities, { supplementalText: pdfText });
+
+  assert.equal(result.rows[0].action, "use_existing");
+  assert.equal(result.rows[0].matchedFacilityId, "sample-rehab");
+  assert.equal(result.rows[0].confidence >= 75, true);
+  assert.equal(result.rows[1].action, "needs_review");
+  assert.equal(result.rows[1].matchedFacilityId, undefined);
+  assert.equal(result.rows[1].confidence, 0);
+  assert.equal(result.rows[1].facilityName, "710 Farm Road");
+});
+
+test("parseVanPacketText keeps only collapsed safe operational notes", () => {
+  const packet = `SPECIAL INSTRUCTIONS
+Use the side entrance and do not block parking.
+Call coordinator 713-555-1212 before arrival.
+Patient has clinical details.
+Make a jump drive for facility education.
+MAP LINK
+https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX`;
+
+  const result = parseVanPacketText(packet, initialFacilities);
+
+  assert.deepEqual(result.summary.safeNotes, [
+    "Use the side entrance and do not block parking.",
+    "Make a jump drive for facility education.",
+  ]);
+  assert.equal(JSON.stringify(result.summary).includes("713-555-1212"), false);
+  assert.equal(JSON.stringify(result.summary).includes("clinical"), false);
 });

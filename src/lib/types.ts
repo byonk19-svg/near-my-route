@@ -25,6 +25,7 @@ export type FacilityContact = {
 export type Facility = {
   id: string;
   name: string;
+  aliases?: string[];
   address: string;
   city?: string;
   lat: number;
@@ -124,6 +125,8 @@ export type ImportReviewRow = {
   appointmentTime?: string;
   facilityName: string;
   address: string;
+  reviewNote?: string;
+  routeOnlyReason?: "private" | "route_anchor";
   studyCount?: number;
   matchedFacilityId?: string;
   confidence: number;
@@ -137,7 +140,9 @@ export type VanPacketSummary = {
   meetDetails?: string;
   mapLink?: string;
   specialInstructions?: string;
+  safeNotes?: string[];
   routeAddresses: string[];
   supplementalTextUsed?: boolean;
   privateStopHints: number;
+  routeAnchorHints: number;
 };
