@@ -148,7 +148,7 @@ try {
   }, storageKey);
   await page.reload({ waitUntil: "networkidle" });
   await clickVisible(page, "Outreach");
-  await page.getByText("Route includes unconfirmed locations: Lakeside Rehab.").first().waitFor();
+  await page.getByText("Route includes unconfirmed locations. Review locations before trusting add-on ranking or Maps handoff.").first().waitFor();
   const blockedTextFirst = await firstVisible(page.getByTestId("text-first-card"), "blocked Text First card");
   await blockedTextFirst.getByRole("heading", { name: "No uncontacted facility needs a text right now" }).waitFor();
   assert.equal(await page.getByTestId("ready-to-text-queue").getByText("Encompass Rehab Westchase").count(), 0);

@@ -1,4 +1,5 @@
-import type { Facility, RouteStop } from "./types";
+import type { Facility, RouteLocation, RouteStop } from "./types";
+import { routeStopLocation } from "./routeLocations";
 
 export const FALLBACK_LOCATION_COORDINATES = {
   lat: 29.7604,
@@ -30,11 +31,11 @@ export function locationConfirmationIssue(location: Pick<Facility, "address" | "
   return undefined;
 }
 
-export function unconfirmedRouteFacilities(routeStops: RouteStop[], facilities: Facility[]) {
+export function unconfirmedRouteFacilities(routeStops: RouteStop[], facilities: Facility[]): RouteLocation[] {
   const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
   return routeStops
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => Boolean(facility && !hasConfirmedLocation(facility)));
+    .map((stop) => routeStopLocation(stop, facilityById))
+    .filter((location): location is RouteLocation => Boolean(location && !hasConfirmedLocation(location)));
 }
 
 export function routeHasUnconfirmedLocations(routeStops: RouteStop[], facilities: Facility[]) {

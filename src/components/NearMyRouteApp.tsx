@@ -21,8 +21,9 @@ import {
 import { initialFacilities, initialOutreachLogs, initialRouteStops } from "@/lib/mockData";
 import { calculateRouteOpportunities } from "@/lib/routeCalculations";
 import { applyImportRows, importRowBlockingReason, parseScheduleText } from "@/lib/scheduleImport";
+import { parseVanPacketText } from "@/lib/vanPacketImport";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
-import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteStop } from "@/lib/types";
+import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteLocation, RouteStop, VanPacketSummary } from "@/lib/types";
 import {
   buildSmsUrl,
   canAttemptSms,
@@ -72,6 +73,21 @@ const sampleSchedule = `8:30 AM, Memorial SNF, 12620 Memorial Dr, Houston, TX, 2
 10:15 AM Park Manor Westchase, 11910 Richmond Ave, Houston, TX, 1 study
 1:00 PM, Lakeside Rehab, 9440 Bellaire Blvd, Houston, TX, 2 studies`;
 
+const sampleVanPacket = `NAME OF TEAM MEMBERS
+Elaine
+
+VAN NAME
+Northwest Van
+
+MEET DETAILS
+Meet at office at 7:30 AM.
+
+SPECIAL INSTRUCTIONS
+Bring van binder.
+
+MAP LINK
+https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/Home+Health,+100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX`;
+
 const opportunityGroups: Opportunity["group"][] = [
   "Best Add-ons",
   "Good Options",
@@ -101,6 +117,7 @@ const dogfoodTasks = [
 ] as const;
 
 type AppTab = "Near My Route" | "Facilities" | "Import Schedule" | "Outreach";
+type ImportMode = "schedule" | "van_packet";
 
 type RouteView =
   | { kind: "home" }
@@ -353,18 +370,25 @@ function BestAddOnCard({
 
 function LocationConfirmationQueue({
   facilities,
+  routeStops,
   routeFacilityIds,
   onConfirm,
 }: {
   facilities: Facility[];
+  routeStops: RouteStop[];
   routeFacilityIds: Set<string>;
-  onConfirm: (facilityId: string, patch: { address: string; lat: number; lng: number }) => void;
+  onConfirm: (locationId: string, patch: { address: string; lat: number; lng: number }) => void;
 }) {
-  const pendingFacilities = facilities
+  const pendingLocations = [
+    ...facilities
     .filter((facility) => facility.locationStatus === "needs_confirmation")
-    .sort((a, b) => Number(routeFacilityIds.has(b.id)) - Number(routeFacilityIds.has(a.id)) || a.name.localeCompare(b.name));
+    .map((facility) => ({ location: facility, isRouteStop: routeFacilityIds.has(facility.id) })),
+    ...routeStops
+      .filter((stop) => stop.privateLocation?.locationStatus === "needs_confirmation")
+      .map((stop) => ({ location: stop.privateLocation as RouteLocation, isRouteStop: true })),
+  ].sort((a, b) => Number(b.isRouteStop) - Number(a.isRouteStop) || a.location.name.localeCompare(b.location.name));
 
-  if (pendingFacilities.length === 0) return null;
+  if (pendingLocations.length === 0) return null;
 
   return (
     <section data-testid="location-confirmation-queue" className="rounded-lg border border-orange-200 bg-orange-50 p-3">
@@ -373,14 +397,14 @@ function LocationConfirmationQueue({
           <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700">Location review</p>
           <h2 className="mt-1 text-sm font-black text-slate-950">Needs location confirmation</h2>
         </div>
-        <Badge tone="orange">{pendingFacilities.length}</Badge>
+        <Badge tone="orange">{pendingLocations.length}</Badge>
       </div>
       <div className="mt-3 space-y-3">
-        {pendingFacilities.map((facility) => (
+        {pendingLocations.map(({ location, isRouteStop }) => (
           <LocationConfirmationCard
-            key={facility.id}
-            facility={facility}
-            isRouteStop={routeFacilityIds.has(facility.id)}
+            key={location.id}
+            facility={location}
+            isRouteStop={isRouteStop}
             onConfirm={onConfirm}
           />
         ))}
@@ -394,9 +418,9 @@ function LocationConfirmationCard({
   isRouteStop,
   onConfirm,
 }: {
-  facility: Facility;
+  facility: RouteLocation;
   isRouteStop: boolean;
-  onConfirm: (facilityId: string, patch: { address: string; lat: number; lng: number }) => void;
+  onConfirm: (locationId: string, patch: { address: string; lat: number; lng: number }) => void;
 }) {
   const [address, setAddress] = useState(facility.address);
   const [lat, setLat] = useState(String(facility.lat));
@@ -1367,6 +1391,7 @@ function ImportRowControls({
         <option value="needs_review">Needs review</option>
         <option value="use_existing">Use selected existing facility</option>
         <option value="create_new">Create new facility</option>
+        <option value="private_route_stop">Private route stop</option>
         <option value="skip">Skip row</option>
       </select>
       {row.action === "needs_review" || row.action === "use_existing" ? (
@@ -1574,7 +1599,9 @@ export default function NearMyRouteApp() {
   const [facilitySearch, setFacilitySearch] = useState("");
   const [facilityTypeFilter, setFacilityTypeFilter] = useState("All");
   const [contactStatusFilter, setContactStatusFilter] = useState("All");
+  const [importMode, setImportMode] = useState<ImportMode>("schedule");
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
+  const [vanPacketSummary, setVanPacketSummary] = useState<VanPacketSummary>();
   const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
   const [expandedImportRowIds, setExpandedImportRowIds] = useState<Record<string, boolean>>({});
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
@@ -1693,6 +1720,7 @@ export default function NearMyRouteApp() {
   const importSummary = {
     useExisting: reviewRows.filter((row) => row.action === "use_existing").length,
     createNew: reviewRows.filter((row) => row.action === "create_new").length,
+    privateRouteStop: reviewRows.filter((row) => row.action === "private_route_stop").length,
     skipped: reviewRows.filter((row) => row.action === "skip").length,
     unresolved: importBlockingRows.length,
     confirmed: reviewRows.filter((row) => row.action !== "skip" && !importRowBlockingReason(row)).length,
@@ -1709,10 +1737,15 @@ export default function NearMyRouteApp() {
     currentRouteUnconfirmedFacilities.length > 0
       ? `Route includes unconfirmed locations: ${currentRouteUnconfirmedFacilities.map((facility) => facility.name).join(", ")}. Confirm location before trusting add-on ranking or Maps handoff.`
       : undefined;
+  const currentRouteLocationOutreachWarning =
+    currentRouteUnconfirmedFacilities.length > 0
+      ? "Route includes unconfirmed locations. Review locations before trusting add-on ranking or Maps handoff."
+      : undefined;
   const isCurrentRouteMapsBlocked = Boolean(currentRouteLocationWarning);
   const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
   const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
   const currentRouteSplitUrls = splitGoogleMapsDirectionsUrls(currentRouteFacilities);
+  const currentRouteSourceMapLink = orderedRouteStops.find((stop) => stop.sourceMapLink)?.sourceMapLink;
   const detourRankByFacilityId = new Map(
     [...opportunities]
       .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)
@@ -1909,10 +1942,10 @@ export default function NearMyRouteApp() {
     );
   }
 
-  function confirmFacilityLocation(facilityId: string, patch: { address: string; lat: number; lng: number }) {
+  function confirmFacilityLocation(locationId: string, patch: { address: string; lat: number; lng: number }) {
     setFacilities((current) =>
       current.map((facility) =>
-        facility.id === facilityId
+        facility.id === locationId
           ? {
               ...facility,
               address: patch.address,
@@ -1924,10 +1957,36 @@ export default function NearMyRouteApp() {
           : facility,
       ),
     );
-    setSelectedFacilityId(facilityId);
+    setRouteStops((current) =>
+      current.map((stop) =>
+        stop.privateLocation?.id === locationId
+          ? {
+              ...stop,
+              privateLocation: {
+                ...stop.privateLocation,
+                address: patch.address,
+                lat: patch.lat,
+                lng: patch.lng,
+                locationStatus: "confirmed",
+                locationSource: "import",
+              },
+            }
+          : stop,
+      ),
+    );
+    if (facilities.some((facility) => facility.id === locationId)) setSelectedFacilityId(locationId);
   }
 
   function parseImportSchedule() {
+    if (importMode === "van_packet") {
+      const result = parseVanPacketText(scheduleText, facilities);
+      setVanPacketSummary(result.summary);
+      setReviewRows(result.rows);
+      setExpandedImportRowIds({});
+      return;
+    }
+
+    setVanPacketSummary(undefined);
     setReviewRows(parseScheduleText(scheduleText, facilities));
     setExpandedImportRowIds({});
   }
@@ -2167,6 +2226,8 @@ export default function NearMyRouteApp() {
     setDogfoodNotes("");
     setDogfoodNoteWarning(undefined);
     setReviewRows([]);
+    setVanPacketSummary(undefined);
+    setImportMode("schedule");
     setScheduleText(sampleSchedule);
   }
 
@@ -2352,6 +2413,11 @@ export default function NearMyRouteApp() {
                   <Button onClick={() => selectTopLevelTab("Import Schedule")}>
                     <Clipboard size={15} /> Import Schedule
                   </Button>
+                  {currentRouteSourceMapLink ? (
+                    <Button onClick={() => openMapsUrl(currentRouteSourceMapLink)}>
+                      <ExternalLink size={15} /> Open original map link
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               {currentRouteMapsWarning ? (
@@ -2382,28 +2448,30 @@ export default function NearMyRouteApp() {
               <div className="mt-3 space-y-2">
                 {orderedRouteStops.map((stop) => {
                   const facility = facilityById.get(stop.facilityId);
-                  if (!facility) return null;
-                  const status = todayStatusByFacilityId.get(facility.id) ?? "not_contacted";
+                  const location = stop.privateLocation ?? facility;
+                  if (!location) return null;
+                  const status = facility ? todayStatusByFacilityId.get(facility.id) ?? "not_contacted" : undefined;
                   return (
                       <button
                         key={stop.id}
                         type="button"
-                        onClick={() => openFacilityReview(facility.id)}
+                        disabled={!facility}
+                        onClick={() => facility && openFacilityReview(facility.id)}
                       className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
                         {stop.order}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-bold text-slate-900">{facility.name}</span>
+                        <span className="block truncate text-sm font-bold text-slate-900">{location.name}</span>
                         <span className="text-xs text-slate-500">
                           {stop.appointmentTime ?? "Time TBD"} - {stop.studyCount ?? 0} studies - {friendlyValue(stop.status)}
                         </span>
-                        {!hasConfirmedLocation(facility) ? (
+                        {!hasConfirmedLocation(location) ? (
                           <span className="mt-1 block text-xs font-bold text-orange-700">Location needs confirmation</span>
                         ) : null}
                       </span>
-                      <Badge tone={todayStatusTone(status)}>{todayStatusLabel(status)}</Badge>
+                      {status ? <Badge tone={todayStatusTone(status)}>{todayStatusLabel(status)}</Badge> : <Badge tone="slate">Private</Badge>}
                     </button>
                   );
                 })}
@@ -2412,6 +2480,7 @@ export default function NearMyRouteApp() {
 
             <LocationConfirmationQueue
               facilities={facilities}
+              routeStops={orderedRouteStops}
               routeFacilityIds={currentRouteFacilityIds}
               onConfirm={confirmFacilityLocation}
             />
@@ -2805,8 +2874,31 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-lg font-black">Import Schedule</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Paste tomorrow&apos;s stops as time, facility, address, and study count. Patient details do not belong here.
+              Paste tomorrow&apos;s stops or a van packet email body. Patient details do not belong here.
             </p>
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              {([
+                ["schedule", "Schedule"],
+                ["van_packet", "Van Packet"],
+              ] as Array<[ImportMode, string]>).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setImportMode(mode);
+                    setVanPacketSummary(undefined);
+                    setReviewRows([]);
+                    setScheduleText(mode === "schedule" ? sampleSchedule : sampleVanPacket);
+                  }}
+                  className={cx(
+                    "rounded-md px-3 py-2 text-sm font-bold transition",
+                    importMode === mode ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <textarea
               value={scheduleText}
               onChange={(event) => setScheduleText(event.target.value)}
@@ -2814,10 +2906,40 @@ export default function NearMyRouteApp() {
             />
             <div className="mt-3 flex gap-2">
               <Button tone="primary" onClick={parseImportSchedule}>
-                Parse Schedule
+                {importMode === "van_packet" ? "Parse Van Packet" : "Parse Schedule"}
               </Button>
-              <Button onClick={() => setScheduleText(sampleSchedule)}>Use sample</Button>
+              <Button onClick={() => setScheduleText(importMode === "van_packet" ? sampleVanPacket : sampleSchedule)}>Use sample</Button>
             </div>
+            {vanPacketSummary ? (
+              <div data-testid="van-packet-summary" className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Van packet</p>
+                <div className="mt-2 grid gap-1 text-slate-700">
+                  <p>
+                    <span className="font-bold">Team:</span>{" "}
+                    {vanPacketSummary.teamMembers.length > 0 ? vanPacketSummary.teamMembers.join(", ") : "Not listed"}
+                  </p>
+                  <p>
+                    <span className="font-bold">Van:</span> {vanPacketSummary.vanName ?? "Not listed"}
+                  </p>
+                  <p>
+                    <span className="font-bold">Meet:</span> {vanPacketSummary.meetDetails ?? "Not listed"}
+                  </p>
+                  <p>
+                    <span className="font-bold">Map stops:</span> {vanPacketSummary.routeAddresses.length}
+                  </p>
+                  {vanPacketSummary.specialInstructions ? (
+                    <p>
+                      <span className="font-bold">Instructions:</span> {vanPacketSummary.specialInstructions}
+                    </p>
+                  ) : null}
+                </div>
+                {vanPacketSummary.mapLink ? (
+                  <Button className="mt-3" onClick={() => openMapsUrl(vanPacketSummary.mapLink)}>
+                    <ExternalLink size={15} /> Open original map link
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -2833,7 +2955,7 @@ export default function NearMyRouteApp() {
                 </Button>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.useExisting}</p>
                 <p className="text-[11px] font-bold uppercase text-slate-500">Existing</p>
@@ -2841,6 +2963,10 @@ export default function NearMyRouteApp() {
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.createNew}</p>
                 <p className="text-[11px] font-bold uppercase text-slate-500">New</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-lg font-black text-slate-950">{importSummary.privateRouteStop}</p>
+                <p className="text-[11px] font-bold uppercase text-slate-500">Private</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.skipped}</p>
@@ -2853,7 +2979,7 @@ export default function NearMyRouteApp() {
             </div>
             {importSummary.unresolved > 0 ? (
               <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
-                Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, or skip the row.
+                Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, mark as a private route stop, or skip the row.
               </div>
             ) : null}
             {reviewRows.some((row) => row.action === "create_new") ? (
@@ -2974,6 +3100,7 @@ export default function NearMyRouteApp() {
                                 <option value="needs_review">Needs review</option>
                                 <option value="use_existing">Use selected existing facility</option>
                                 <option value="create_new">Create new facility</option>
+                                <option value="private_route_stop">Private route stop</option>
                                 <option value="skip">Skip row</option>
                               </select>
                             )}
@@ -3015,9 +3142,9 @@ export default function NearMyRouteApp() {
             <p className="mt-1 text-sm text-slate-500">
               Work today&apos;s facility responses first. Templates intentionally avoid PHI.
             </p>
-            {currentRouteLocationWarning ? (
+            {currentRouteLocationOutreachWarning ? (
               <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
-                <p>{currentRouteLocationWarning}</p>
+                <p>{currentRouteLocationOutreachWarning}</p>
                 <Button
                   className="mt-2"
                   onClick={() => openRouteHome(currentRouteUnconfirmedFacilities[0]?.id ?? selectedFacilityId)}
