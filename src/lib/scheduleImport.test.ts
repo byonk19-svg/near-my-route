@@ -104,6 +104,27 @@ test("creates exactly one facility for an explicit valid create-new row", () => 
   assert.match(result.facilities.at(-1)?.notes ?? "", /Confirm location/);
 });
 
+test("applyImportRows remembers safe aliases for selected existing facilities", () => {
+  const row = {
+    id: "alias-row",
+    raw: "RESORT KATY",
+    facilityName: "1222 Park West Green Dr",
+    address: "1222 Park West Green Dr, Katy, TX",
+    sourceMapLink: "https://maps.example/route",
+    matchedFacilityId: "park-manor-westchase",
+    confidence: 55,
+    action: "use_existing" as const,
+    aliasCandidate: "RESORT KATY",
+    rememberAlias: true,
+  };
+
+  const result = applyImportRows([row], initialFacilities);
+  const facility = result.facilities.find((item) => item.id === "park-manor-westchase");
+
+  assert.equal(result.routeStops.length, 1);
+  assert.deepEqual(facility?.aliases, ["RESORT KATY"]);
+});
+
 test("skipped and unresolved rows do not create route stops or facilities", () => {
   const skipped: ImportReviewRow = {
     id: "row-skip",

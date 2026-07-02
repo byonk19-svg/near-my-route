@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 const baseUrl = process.env.VAN_PACKET_URL ?? "http://localhost:3018";
 const storageKey = "near-my-route-state-v1";
 const sourceMapLink =
-  "https://www.google.com/maps/dir/900+Example+Start,+Houston,+TX/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX/900+Example+Start,+Houston,+TX";
+  "https://www.google.com/maps/dir/900+Example+Start,+Houston,+TX/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/100+Example+St,+Houston,+TX/999+Alias+Test+Rd,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX/900+Example+Start,+Houston,+TX";
 const packetText = `NAME OF TEAM MEMBERS
 Elaine; Jordan
 
@@ -31,6 +31,8 @@ HOME HEALTH
 100 EXAMPLE ST, HOUSTON, TX
 Patient: PRIVATE_DETAIL
 Referring MD: PRIVATE_DETAIL
+WESTCHASE OUTPOST
+999 ALIAS TEST RD, HOUSTON, TX
 PARK MANOR WESTCHASE
 11910 RICHMOND AVENUE, HOUSTON, TX`;
 
@@ -93,7 +95,7 @@ try {
 
   const summary = page.getByTestId("van-packet-summary");
   await summary.getByText("Northwest Van").waitFor();
-  await summary.getByText("Map stops: 5").waitFor();
+  await summary.getByText("Map stops: 6").waitFor();
   await summary.getByText("Private stop hints: 1").waitFor();
   await summary.getByText("Route start/end: 2 skipped").waitFor();
   await summary.getByText("Used for stop review hints").waitFor();
@@ -107,18 +109,37 @@ try {
   await page.getByText("Duplicate return point skipped").waitFor();
   await page.getByTestId("import-review-card-1").getByRole("heading", { name: "Memorial SNF" }).waitFor();
   await page.getByTestId("import-review-card-2").getByRole("heading", { name: "Private route stop 3" }).waitFor();
-  await page.getByTestId("import-review-card-3").getByRole("heading", { name: "Park Manor Westchase" }).waitFor();
-  await clickVisible(page, "Confirm 3 Stops");
+  const aliasCard = page.getByTestId("import-review-card-3");
+  await aliasCard.getByRole("heading", { name: "999 Alias Test Rd" }).waitFor();
+  await firstVisible(
+    aliasCard.getByText("PDF label hint. Select the facility to remember this alias."),
+    "initial alias review hint",
+  );
+  await aliasCard.getByLabel("Existing facility").selectOption("park-manor-westchase");
+  const rememberAliasCheckbox = await firstVisible(
+    aliasCard.getByLabel('Remember "WESTCHASE OUTPOST" as an alias for this facility'),
+    "remember alias checkbox",
+  );
+  await rememberAliasCheckbox.check();
+  await page.getByTestId("import-review-card-4").getByRole("heading", { name: "Park Manor Westchase" }).waitFor();
+  await clickVisible(page, "Confirm 4 Stops");
 
   let state = await waitForStoredState(
     page,
     (nextState) =>
-      nextState.routeStops?.length === 3 &&
-      nextState.routeStops?.some((stop) => stop.source === "private_route_stop" && stop.privateLocation?.name === "Private route stop 3"),
+      nextState.routeStops?.length === 4 &&
+      nextState.routeStops?.some((stop) => stop.source === "private_route_stop" && stop.privateLocation?.name === "Private route stop 3") &&
+      nextState.facilities
+        ?.find((facility) => facility.id === "park-manor-westchase")
+        ?.aliases?.includes("WESTCHASE OUTPOST"),
     "van packet route with private stop",
   );
   assert.equal(state.facilities.length, initialFacilityCount);
   assert.equal(state.facilities.some((facility) => facility.name === "Private route stop 3"), false);
+  assert.equal(
+    state.facilities.find((facility) => facility.id === "park-manor-westchase")?.aliases?.includes("WESTCHASE OUTPOST"),
+    true,
+  );
   assert.equal(state.routeStops.every((stop) => stop.sourceMapLink === sourceMapLink), true);
 
   await page.getByRole("button", { name: "Open original map link" }).first().waitFor();
@@ -155,6 +176,21 @@ try {
   await page.getByRole("button", { name: "Open in Google Maps" }).first().waitFor();
   assert.equal(await page.getByRole("button", { name: "Confirm locations for Maps" }).count(), 0);
   assert.equal(await page.getByText("No route add-ons match these filters").count(), 0);
+
+  await clickVisible(page, "Import Schedule");
+  await page.getByLabel("Email body and map link").fill(packetText);
+  await page.getByLabel("PDF table text").fill(pdfTableText);
+  await clickVisible(page, "Parse Van Packet");
+  const learnedAliasCard = page.getByTestId("import-review-card-3");
+  await learnedAliasCard.getByRole("heading", { name: "Park Manor Westchase" }).waitFor();
+  const learnedAliasAddress = await firstVisible(learnedAliasCard.getByLabel("Edit address"), "learned alias original address");
+  assert.match(await learnedAliasAddress.inputValue(), /999 Alias Test Rd/);
+  await firstVisible(
+    learnedAliasCard.getByText("Possible known facility label. Confirm the facility to remember this alias."),
+    "learned alias review hint",
+  );
+  await firstVisible(learnedAliasCard.getByText("Park Manor Westchase"), "learned alias matched facility");
+  await firstVisible(learnedAliasCard.getByText("55% match"), "learned alias confidence");
 
   console.log("Van packet import browser validation passed.");
 } finally {

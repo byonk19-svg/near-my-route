@@ -1314,6 +1314,7 @@ function FacilityMatchSelect({
           onUpdateRow(row.id, {
             matchedFacilityId: event.target.value || undefined,
             action: event.target.value ? "use_existing" : "needs_review",
+            rememberAlias: event.target.value ? row.rememberAlias : false,
           })
         }
         className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-900"
@@ -1420,6 +1421,17 @@ function ImportRowControls({
       </div>
       {row.action === "needs_review" || row.action === "use_existing" ? (
         <FacilityMatchSelect row={row} facilities={facilities} idPrefix={idPrefix} onUpdateRow={onUpdateRow} />
+      ) : null}
+      {row.aliasCandidate && row.matchedFacilityId && row.action === "use_existing" ? (
+        <label className="mt-3 flex items-start gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm font-semibold text-blue-900">
+          <input
+            type="checkbox"
+            checked={Boolean(row.rememberAlias)}
+            onChange={(event) => onUpdateRow(row.id, { rememberAlias: event.target.checked })}
+            className="mt-1"
+          />
+          <span>Remember &quot;{row.aliasCandidate}&quot; as an alias for this facility</span>
+        </label>
       ) : null}
       <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
         Edit address

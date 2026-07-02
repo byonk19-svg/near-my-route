@@ -127,6 +127,8 @@ export type ImportReviewRow = {
   address: string;
   reviewNote?: string;
   routeOnlyReason?: "private" | "route_anchor";
+  aliasCandidate?: string;
+  rememberAlias?: boolean;
   studyCount?: number;
   matchedFacilityId?: string;
   confidence: number;
