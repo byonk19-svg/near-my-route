@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 const baseUrl = process.env.VAN_PACKET_URL ?? "http://localhost:3018";
 const storageKey = "near-my-route-state-v1";
 const sourceMapLink =
-  "https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/Home+Health,+100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX";
+  "https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX";
 const packetText = `NAME OF TEAM MEMBERS
 Elaine; Jordan
 
@@ -22,6 +22,15 @@ Referring MD: PRIVATE_DETAIL
 
 MAP LINK
 ${sourceMapLink}`;
+const pdfTableText = `HOUSTON VAN 1
+MEMORIAL SNF
+12620 MEMORIAL DR, HOUSTON, TX
+HOME HEALTH
+100 EXAMPLE ST, HOUSTON, TX
+Patient: PRIVATE_DETAIL
+Referring MD: PRIVATE_DETAIL
+PARK MANOR WESTCHASE
+11910 RICHMOND AVE, HOUSTON, TX`;
 
 async function clickVisible(pageOrLocator, name) {
   const buttons = pageOrLocator.getByRole("button", { name });
@@ -76,13 +85,18 @@ try {
 
   await clickVisible(page, "Import Schedule");
   await clickVisible(page, "Van Packet");
-  await page.locator("textarea").fill(packetText);
+  await page.getByLabel("Email body and map link").fill(packetText);
+  await page.getByLabel("PDF table text").fill(pdfTableText);
   await clickVisible(page, "Parse Van Packet");
 
   const summary = page.getByTestId("van-packet-summary");
   await summary.getByText("Northwest Van").waitFor();
   await summary.getByText("Map stops: 3").waitFor();
+  await summary.getByText("Route-only hints: 1").waitFor();
+  await summary.getByText("Used for stop review hints").waitFor();
   assert.equal(await summary.getByText("PRIVATE_DETAIL").count(), 0);
+  assert.equal(await page.getByLabel("Email body and map link").inputValue(), "");
+  assert.equal(await page.getByLabel("PDF table text").inputValue(), "");
 
   await page.getByTestId("import-review-card-1").getByRole("heading", { name: "Memorial SNF" }).waitFor();
   await page.getByTestId("import-review-card-2").getByRole("heading", { name: "Private route stop 2" }).waitFor();
