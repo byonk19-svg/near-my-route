@@ -2886,7 +2886,9 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-lg font-black">Import Schedule</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Paste tomorrow&apos;s stops or a van packet email body. Patient details do not belong here.
+              {importMode === "van_packet"
+                ? "Paste the email body/map link and, if needed, copied PDF table text. PDF table text is used only to identify stop-review hints like Home Health/private stops, then cleared after parsing. Patient details are not saved to review rows."
+                : "Paste tomorrow's stops. Patient details do not belong here."}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
               {([
@@ -2929,6 +2931,9 @@ export default function NearMyRouteApp() {
                     onChange={(event) => setVanPacketPdfText(event.target.value)}
                     className="mt-1 min-h-40 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
                   />
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">
+                    Used only for stop-review hints and cleared after parsing.
+                  </span>
                 </label>
               </div>
             ) : (
