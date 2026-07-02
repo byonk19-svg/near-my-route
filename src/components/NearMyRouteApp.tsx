@@ -2979,7 +2979,7 @@ export default function NearMyRouteApp() {
             </div>
             {importSummary.unresolved > 0 ? (
               <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
-                Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, or skip the row.
+                Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, mark as a private route stop, or skip the row.
               </div>
             ) : null}
             {reviewRows.some((row) => row.action === "create_new") ? (

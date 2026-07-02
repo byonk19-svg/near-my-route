@@ -86,7 +86,9 @@ export function importRowBlockingReason(row: ImportReviewRow) {
   if (row.action === "skip") return undefined;
   if (!row.appointmentTime?.trim() && !row.sourceMapLink) return "Add an appointment time or skip this row.";
   if (!row.facilityName.trim() || isPlaceholder(row.facilityName)) return "Add a real facility name or skip this row.";
-  if (row.action === "needs_review") return "Choose an existing facility, create a new facility, or skip.";
+  if (row.action === "needs_review") {
+    return "Choose an existing facility, create a new facility, mark as a private route stop, or skip.";
+  }
   if (row.action === "use_existing" && !row.matchedFacilityId) return "Select an existing facility before confirming.";
   if (row.action === "private_route_stop" && (!row.address.trim() || isPlaceholder(row.address))) {
     return "Add a full address before creating a private route stop.";

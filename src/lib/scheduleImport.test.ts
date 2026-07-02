@@ -65,7 +65,10 @@ test("keeps weak partial-name matches in needs-review state", () => {
   assert.equal(row.confidence, 45);
   assert.equal(row.matchedFacilityId, "park-manor-westchase");
   assert.equal(row.action, "needs_review");
-  assert.equal(importRowBlockingReason(row), "Choose an existing facility, create a new facility, or skip.");
+  assert.equal(
+    importRowBlockingReason(row),
+    "Choose an existing facility, create a new facility, mark as a private route stop, or skip.",
+  );
 });
 
 test("reuses existing facilities when applying confirmed import rows", () => {
@@ -151,7 +154,10 @@ test("guardrails block unresolved, unselected, and placeholder create-new rows",
     address: "100 New Rd, Houston, TX",
   };
 
-  assert.equal(importRowBlockingReason(needsReview), "Choose an existing facility, create a new facility, or skip.");
+  assert.equal(
+    importRowBlockingReason(needsReview),
+    "Choose an existing facility, create a new facility, mark as a private route stop, or skip.",
+  );
   assert.equal(importRowBlockingReason(missingExisting), "Select an existing facility before confirming.");
   assert.equal(importRowBlockingReason(blankAddress), "Add a full address before creating a new facility.");
   assert.equal(importRowBlockingReason(placeholderName), "Add a real facility name or skip this row.");
