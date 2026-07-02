@@ -138,4 +138,6 @@ export type VanPacketSummary = {
   mapLink?: string;
   specialInstructions?: string;
   routeAddresses: string[];
+  supplementalTextUsed?: boolean;
+  privateStopHints: number;
 };

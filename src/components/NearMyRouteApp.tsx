@@ -88,6 +88,14 @@ Bring van binder.
 MAP LINK
 https://www.google.com/maps/dir/Memorial+SNF,+12620+Memorial+Dr,+Houston,+TX/Home+Health,+100+Example+St,+Houston,+TX/Park+Manor+Westchase,+11910+Richmond+Ave,+Houston,+TX`;
 
+const sampleVanPacketPdfText = `HOUSTON VAN 1
+MEMORIAL SNF
+12620 MEMORIAL DR, HOUSTON, TX
+HOME HEALTH
+100 EXAMPLE ST, HOUSTON, TX
+PARK MANOR WESTCHASE
+11910 RICHMOND AVE, HOUSTON, TX`;
+
 const opportunityGroups: Opportunity["group"][] = [
   "Best Add-ons",
   "Good Options",
@@ -1601,6 +1609,7 @@ export default function NearMyRouteApp() {
   const [contactStatusFilter, setContactStatusFilter] = useState("All");
   const [importMode, setImportMode] = useState<ImportMode>("schedule");
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
+  const [vanPacketPdfText, setVanPacketPdfText] = useState("");
   const [vanPacketSummary, setVanPacketSummary] = useState<VanPacketSummary>();
   const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
   const [expandedImportRowIds, setExpandedImportRowIds] = useState<Record<string, boolean>>({});
@@ -1979,10 +1988,12 @@ export default function NearMyRouteApp() {
 
   function parseImportSchedule() {
     if (importMode === "van_packet") {
-      const result = parseVanPacketText(scheduleText, facilities);
+      const result = parseVanPacketText(scheduleText, facilities, { supplementalText: vanPacketPdfText });
       setVanPacketSummary(result.summary);
       setReviewRows(result.rows);
       setExpandedImportRowIds({});
+      setScheduleText("");
+      setVanPacketPdfText("");
       return;
     }
 
@@ -2229,6 +2240,7 @@ export default function NearMyRouteApp() {
     setVanPacketSummary(undefined);
     setImportMode("schedule");
     setScheduleText(sampleSchedule);
+    setVanPacketPdfText("");
   }
 
   const filteredFacilities = facilities.filter((facility) => {
@@ -2874,7 +2886,9 @@ export default function NearMyRouteApp() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-lg font-black">Import Schedule</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Paste tomorrow&apos;s stops or a van packet email body. Patient details do not belong here.
+              {importMode === "van_packet"
+                ? "Paste the email body/map link and, if needed, copied PDF table text. PDF table text is used only to identify stop-review hints like Home Health/private stops, then cleared after parsing. Patient details are not saved to review rows."
+                : "Paste tomorrow's stops. Patient details do not belong here."}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
               {([
@@ -2889,6 +2903,7 @@ export default function NearMyRouteApp() {
                     setVanPacketSummary(undefined);
                     setReviewRows([]);
                     setScheduleText(mode === "schedule" ? sampleSchedule : sampleVanPacket);
+                    setVanPacketPdfText(mode === "schedule" ? "" : sampleVanPacketPdfText);
                   }}
                   className={cx(
                     "rounded-md px-3 py-2 text-sm font-bold transition",
@@ -2899,16 +2914,47 @@ export default function NearMyRouteApp() {
                 </button>
               ))}
             </div>
-            <textarea
-              value={scheduleText}
-              onChange={(event) => setScheduleText(event.target.value)}
-              className="mt-4 min-h-64 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
-            />
+            {importMode === "van_packet" ? (
+              <div className="mt-4 grid gap-3">
+                <label className="block">
+                  <span className="text-xs font-bold uppercase text-slate-500">Email body and map link</span>
+                  <textarea
+                    value={scheduleText}
+                    onChange={(event) => setScheduleText(event.target.value)}
+                    className="mt-1 min-h-48 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-bold uppercase text-slate-500">PDF table text</span>
+                  <textarea
+                    value={vanPacketPdfText}
+                    onChange={(event) => setVanPacketPdfText(event.target.value)}
+                    className="mt-1 min-h-40 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
+                  />
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">
+                    Used only for stop-review hints and cleared after parsing.
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <textarea
+                value={scheduleText}
+                onChange={(event) => setScheduleText(event.target.value)}
+                className="mt-4 min-h-64 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm leading-6"
+              />
+            )}
             <div className="mt-3 flex gap-2">
               <Button tone="primary" onClick={parseImportSchedule}>
                 {importMode === "van_packet" ? "Parse Van Packet" : "Parse Schedule"}
               </Button>
-              <Button onClick={() => setScheduleText(importMode === "van_packet" ? sampleVanPacket : sampleSchedule)}>Use sample</Button>
+              <Button
+                onClick={() => {
+                  setScheduleText(importMode === "van_packet" ? sampleVanPacket : sampleSchedule);
+                  setVanPacketPdfText(importMode === "van_packet" ? sampleVanPacketPdfText : "");
+                }}
+              >
+                Use sample
+              </Button>
             </div>
             {vanPacketSummary ? (
               <div data-testid="van-packet-summary" className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
@@ -2927,6 +2973,14 @@ export default function NearMyRouteApp() {
                   <p>
                     <span className="font-bold">Map stops:</span> {vanPacketSummary.routeAddresses.length}
                   </p>
+                  <p>
+                    <span className="font-bold">Route-only hints:</span> {vanPacketSummary.privateStopHints}
+                  </p>
+                  {vanPacketSummary.supplementalTextUsed ? (
+                    <p>
+                      <span className="font-bold">PDF table:</span> Used for stop review hints
+                    </p>
+                  ) : null}
                   {vanPacketSummary.specialInstructions ? (
                     <p>
                       <span className="font-bold">Instructions:</span> {vanPacketSummary.specialInstructions}
