@@ -13,6 +13,7 @@
     "test:e2e:contacts": "node scripts/verify-contact-data-setup.mjs",
     "test:e2e:location-confirmation": "node scripts/verify-location-confirmation.mjs",
     "test:e2e:van-packet": "node scripts/verify-van-packet-import.mjs",
+    "screenshots:walkthrough": "tsx scripts/capture-walkthrough-screenshots.ts",
     "start": "next start",
     "lint": "eslint"
   },
