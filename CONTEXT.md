@@ -1,4 +1,4 @@
-# Facility Consult Map
+# Near My Route Domain Context
 
 A personal geography-first record of facilities visited during MBSS van work, used to reconnect with facility SLPs when Elaine is scheduled nearby.
 
@@ -23,3 +23,27 @@ _Avoid_: Patient message, referral request
 **Visit**:
 A dated instance of Elaine going to a Facility for MBSS-related work.
 _Avoid_: Appointment, trip
+
+**Van Packet**:
+A daily route packet represented in the app by pasted email body/map link text and optional copied PDF table text. The app uses it to build facility-level import review rows and route-only private stops.
+_Avoid_: Patient packet, chart packet
+
+**Import Review Row**:
+A parsed row that must be resolved before confirming a route. It can use an existing Facility, create a new Facility, become a Private Route Stop, or be skipped.
+_Avoid_: Lead, referral row
+
+**Private Route Stop**:
+A route-only stop, usually for Home Health or another private/residential address, that can exist on the current route but must not become a Facility or outreach candidate.
+_Avoid_: Facility, site, account
+
+**Route Anchor**:
+A meet/start/return point from the source route. It may be shown for context and skipped from normal facility review.
+_Avoid_: Facility, add-on candidate
+
+**Location Review**:
+The confirmation workflow for imported, changed, fallback, or private route locations before they can drive route ranking or app-generated Maps handoff.
+_Avoid_: Geocoding, route approval
+
+**Facility Alias**:
+A local alternate facility label learned from import review, used to improve future matching while still requiring review when the alias is not supported by address evidence.
+_Avoid_: Patient label, contact alias
