@@ -73,6 +73,8 @@ Do not start OSRM, Supabase, Google Routes, Mapbox, auth, external SMS integrati
 
 The next coding branch should come from concrete manual dogfood evidence, not speculative roadmap work.
 
+Current dogfood focus is the local Van Packet workflow: paste email body/map link, optionally paste copied PDF table text for stop-review hints, resolve facility matches and private stops, confirm locations, then evaluate Outreach/Text First and Maps handoff.
+
 ## Architecture Map
 
 Main areas:
@@ -82,10 +84,15 @@ Main areas:
 - `src/components/RouteMap.tsx` - map rendering.
 - `src/lib/routeCalculations.ts` - route opportunity calculations and future routing API seam.
 - `src/lib/googleMaps.ts` - Google Maps directions handoff.
+- `src/lib/locationTrust.ts` - location confirmation guardrails.
+- `src/lib/routeLocations.ts` - shared route-stop location resolution for facilities and private stops.
 - `src/lib/scheduleImport.ts` - schedule paste/import parsing.
+- `src/lib/vanPacketImport.ts` - Van Packet email/map/PDF-text parsing.
+- `src/lib/facilityAliases.ts` - local facility alias learning and safety filters.
 - `src/lib/todayStatus.ts` - current-day facility status lifecycle.
 - `src/lib/outreachPriority.ts` - outreach queue priority behavior.
 - `src/lib/storage.ts` - LocalStorage persistence.
+- `src/lib/privacy.ts` - PHI-looking text filtering helpers.
 - `src/lib/types.ts` - shared domain types.
 - `src/lib/mockData.ts` - Houston-area mock facilities and route stops.
 
@@ -116,6 +123,10 @@ The current MVP uses internal route calculations, not a live routing API.
 If adding future routing behavior, keep it behind the `calculateRouteOpportunities` seam so the UI and data model remain mostly stable.
 
 Google Maps URLs are a handoff only. They should not drive internal opportunity ranking.
+
+Imported or private route stops must not participate in ranking or app-generated Maps handoff until their locations are confirmed.
+
+Location review may use a pasted Google Maps URL to extract coordinates from `!3dLAT!4dLNG`, `/@LAT,LNG`, or simple `q=LAT,LNG`, but the user must still manually confirm the location.
 
 ## Local Persistence
 
@@ -152,6 +163,8 @@ Focused e2e verification scripts:
 - `npm run test:e2e:outreach-priority`
 - `npm run test:e2e:dogfood`
 - `npm run test:e2e:contacts`
+- `npm run test:e2e:location-confirmation`
+- `npm run test:e2e:van-packet`
 
 ## Validation Expectations
 
@@ -162,7 +175,7 @@ For small copy or styling changes:
 For changes in `src/lib/*`:
 
 - Run `npm test`.
-- Also run the matching focused e2e script when the change touches import, messages, outreach priority, dogfood flow, or contact setup.
+- Also run the matching focused e2e script when the change touches import, Van Packet parsing, location confirmation, messages, outreach priority, dogfood flow, or contact setup.
 
 For Next.js, routing, build config, package, or app entry changes:
 
