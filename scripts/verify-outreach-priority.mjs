@@ -84,8 +84,9 @@ try {
   assert.equal(await readyQueue.getByText("Memorial SNF").count(), 0);
   await page.getByText("Needs phone before texting").first().waitFor();
 
-  await clickVisible(textFirst, "Text");
-  await page.getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.").first().waitFor();
+  const blockedText = textFirst.getByRole("button", { name: "Enter real phone first" });
+  await blockedText.waitFor();
+  assert.equal(await blockedText.isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
 
   await page.getByLabel("Phone for Lisa").first().fill("713-867-5309");
@@ -99,7 +100,7 @@ try {
     "edited Text First phone persisted",
   );
 
-  await clickVisible(page, "Open Messages");
+  await clickVisible(textFirst, "Text");
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
     .first()

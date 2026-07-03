@@ -128,6 +128,13 @@ const dogfoodTasks = [
 type AppTab = "Near My Route" | "Facilities" | "Import Schedule" | "Outreach";
 type ImportMode = "schedule" | "van_packet";
 
+const tabLabels: Record<AppTab, string> = {
+  "Near My Route": "Route",
+  Facilities: "Facilities",
+  "Import Schedule": "Import",
+  Outreach: "Outreach",
+};
+
 type RouteView =
   | { kind: "home" }
   | { kind: "review"; facilityId: string; sourceTab: AppTab }
@@ -163,6 +170,7 @@ function Button({
   onClick,
   type = "button",
   disabled = false,
+  ariaLabel,
 }: {
   children: React.ReactNode;
   tone?: "primary" | "secondary" | "ghost" | "danger";
@@ -170,10 +178,12 @@ function Button({
   onClick?: () => void;
   type?: "button" | "submit";
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type={type}
+      aria-label={ariaLabel}
       onClick={onClick}
       disabled={disabled}
       className={cx(
@@ -206,6 +216,26 @@ function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?:
       {children}
     </span>
   );
+}
+
+function StatusSummary({ counts }: { counts: Array<{ status: TodayStatus; label: string; count: number }> }) {
+  const visibleCounts = counts.filter(({ count }) => count > 0);
+
+  if (visibleCounts.length === 0) {
+    return <p className="text-sm font-semibold text-slate-500">No outreach logged today.</p>;
+  }
+
+  return (
+    <p className="text-sm font-semibold text-slate-600">
+      {visibleCounts.map(({ label, count }) => `${count} ${label.toLowerCase()}`).join(" - ")}
+    </p>
+  );
+}
+
+function blockedTextActionLabel(readiness: ReturnType<typeof textReadiness>) {
+  if (readiness === "needs_real_phone") return "Enter real phone first";
+  if (readiness === "no_phone") return "Add phone to text";
+  return "Text";
 }
 
 function Toggle({
@@ -299,8 +329,8 @@ function OpportunityCard({
         </div>
       </button>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button tone="primary" onClick={onReview}>
-          <MessageSquareText size={15} /> Review fit
+        <Button tone="primary" ariaLabel="Review fit" onClick={onReview}>
+          <MessageSquareText size={15} /> See why this fits
         </Button>
         <Button onClick={onMarkContacted}>
           <Check size={15} /> Text today
@@ -337,8 +367,8 @@ function BestAddOnCard({
         <p className="mt-1 text-sm leading-6 text-slate-600">
           Adjust the detour or contact filters, or import tomorrow&apos;s schedule before reviewing candidates.
         </p>
-        <Button className="mt-3 w-full" onClick={onImport}>
-          <Clipboard size={15} /> Import Schedule
+        <Button className="mt-3 w-full" ariaLabel="Import Schedule" onClick={onImport}>
+          <Clipboard size={15} /> Import route
         </Button>
       </section>
     );
@@ -366,8 +396,8 @@ function BestAddOnCard({
         ))}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button tone="primary" onClick={onReview}>
-          <MessageSquareText size={15} /> Review fit
+        <Button tone="primary" ariaLabel="Review fit" onClick={onReview}>
+          <MessageSquareText size={15} /> See why this fits
         </Button>
         <Button onClick={onPreview}>
           <ExternalLink size={15} /> Preview route
@@ -390,12 +420,15 @@ function LocationConfirmationQueue({
 }) {
   const pendingLocations = [
     ...facilities
-    .filter((facility) => facility.locationStatus === "needs_confirmation")
-    .map((facility) => ({ location: facility, isRouteStop: routeFacilityIds.has(facility.id) })),
+      .filter((facility) => facility.locationStatus === "needs_confirmation" && routeFacilityIds.has(facility.id))
+      .map((facility) => ({ location: facility, isRouteStop: true })),
     ...routeStops
       .filter((stop) => stop.privateLocation?.locationStatus === "needs_confirmation")
       .map((stop) => ({ location: stop.privateLocation as RouteLocation, isRouteStop: true })),
   ].sort((a, b) => Number(b.isRouteStop) - Number(a.isRouteStop) || a.location.name.localeCompare(b.location.name));
+  const [activeLocationId, setActiveLocationId] = useState(pendingLocations[0]?.location.id);
+  const activeLocation =
+    pendingLocations.find(({ location }) => location.id === activeLocationId) ?? pendingLocations[0];
 
   if (pendingLocations.length === 0) return null;
 
@@ -408,15 +441,33 @@ function LocationConfirmationQueue({
         </div>
         <Badge tone="orange">{pendingLocations.length}</Badge>
       </div>
-      <div className="mt-3 space-y-3">
-        {pendingLocations.map(({ location, isRouteStop }) => (
-          <LocationConfirmationCard
-            key={location.id}
-            facility={location}
-            isRouteStop={isRouteStop}
-            onConfirm={onConfirm}
-          />
-        ))}
+      {pendingLocations.length > 1 ? (
+        <div className="mt-3 grid gap-2">
+          {pendingLocations.map(({ location }, index) => (
+            <button
+              key={location.id}
+              type="button"
+              onClick={() => setActiveLocationId(location.id)}
+              className={cx(
+                "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs font-bold",
+                activeLocation.location.id === location.id
+                  ? "border-orange-300 bg-white text-orange-800"
+                  : "border-orange-200 bg-orange-100/60 text-orange-700",
+              )}
+            >
+              <span className="truncate">{index + 1}. {location.name}</span>
+              {activeLocation.location.id === location.id ? <span>Reviewing</span> : <span>Open</span>}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3">
+        <LocationConfirmationCard
+          key={activeLocation.location.id}
+          facility={activeLocation.location}
+          isRouteStop={activeLocation.isRouteStop}
+          onConfirm={onConfirm}
+        />
       </div>
     </section>
   );
@@ -655,6 +706,7 @@ function DetailDrawer({
   todayStatus,
   outreachLogs,
   showMessage,
+  isOnRoute = false,
   className,
   onCloseMessage,
   onCall,
@@ -675,6 +727,7 @@ function DetailDrawer({
   todayStatus?: TodayStatus;
   outreachLogs: OutreachLog[];
   showMessage: boolean;
+  isOnRoute?: boolean;
   className?: string;
   onCloseMessage: () => void;
   onCall: () => void;
@@ -703,6 +756,8 @@ function DetailDrawer({
   const message = safeMessage();
   const canAddRoute = Boolean(opportunity);
   const canContact = todayStatus !== "do_not_contact";
+  const readiness = textReadiness(facility);
+  const canStartText = readiness === "ready";
   const responseActions =
     todayStatus === "added" || todayStatus === "no_patients_today" || todayStatus === "do_not_contact"
       ? []
@@ -713,9 +768,11 @@ function DetailDrawer({
           <Button key="no-patients" onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
             No patients today
           </Button>,
-          <Button key="possible" tone="primary" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
-            Possible add-on
-          </Button>,
+          canAddRoute ? (
+            <Button key="possible" tone="primary" ariaLabel="Possible add-on" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
+              Mark possible add-on
+            </Button>
+          ) : null,
         ];
 
   return (
@@ -734,13 +791,13 @@ function DetailDrawer({
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-[11px] font-bold uppercase text-slate-500">Added drive</p>
           <p className="mt-1 text-xl font-black text-orange-600">
-            {opportunity ? `+${opportunity.addedDriveMinutes} min` : "On route"}
+            {opportunity ? `+${opportunity.addedDriveMinutes} min` : isOnRoute ? "On route" : "No match"}
           </p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-[11px] font-bold uppercase text-slate-500">Nearest stop</p>
           <p className="mt-1 text-sm font-bold text-slate-900">
-            {opportunity ? opportunity.nearestStopName : "Scheduled stop"}
+            {opportunity ? opportunity.nearestStopName : isOnRoute ? "Scheduled stop" : "Adjust filters"}
           </p>
         </div>
       </div>
@@ -817,7 +874,7 @@ function DetailDrawer({
 
       <section className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-black text-slate-900">Today response</h3>
+          <h3 className="text-sm font-black text-slate-900">Log response</h3>
           {todayStatus ? <Badge tone={todayStatusTone(todayStatus)}>{todayStatusLabel(todayStatus)}</Badge> : null}
         </div>
         {todayStatus === "added" ? (
@@ -831,8 +888,8 @@ function DetailDrawer({
           </div>
         ) : null}
         {todayStatus === "not_contacted" ? (
-          <Button className="mt-3 w-full" tone="primary" onClick={onStartText}>
-            <Send size={15} /> Open Messages
+          <Button className="mt-3 w-full" tone={canStartText ? "primary" : "secondary"} disabled={!canStartText} onClick={onStartText}>
+            <Send size={15} /> {canStartText ? "Open Messages" : blockedTextActionLabel(readiness)}
           </Button>
         ) : null}
         {responseActions.length > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">{responseActions}</div> : null}
@@ -964,9 +1021,19 @@ function DetailDrawer({
 }
 
 function TodayStatusStrip({ counts }: { counts: Array<{ status: TodayStatus; label: string; count: number }> }) {
+  const visibleCounts = counts.filter(({ count }) => count > 0);
+
+  if (visibleCounts.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-500">
+        No outreach statuses logged yet.
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-      {counts.map(({ status, label, count }) => (
+      {visibleCounts.map(({ status, label, count }) => (
         <div key={status} className="rounded-md border border-slate-200 bg-white px-3 py-2">
           <p className="text-[11px] font-bold uppercase text-slate-500">{label}</p>
           <p className="mt-1 text-xl font-black text-slate-950">{count}</p>
@@ -1127,9 +1194,15 @@ function OutreachQueueCard({
 
   if (status === "not_contacted") {
     actionButtons.push(
-      <Button key="text" tone="primary" onClick={onTemplate}>
-        <Send size={15} /> Text
-      </Button>,
+      readiness === "ready" ? (
+        <Button key="text" tone="primary" onClick={onTemplate}>
+          <Send size={15} /> Text
+        </Button>
+      ) : (
+        <Button key="text-blocked" disabled>
+          {blockedTextActionLabel(readiness)}
+        </Button>
+      ),
     );
   }
 
@@ -1141,8 +1214,8 @@ function OutreachQueueCard({
       <Button key="no-patients" onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
         No patients
       </Button>,
-      <Button key="possible" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
-        Possible
+      <Button key="possible" ariaLabel="Possible add-on" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
+        Mark possible add-on
       </Button>,
     );
   }
@@ -1208,7 +1281,6 @@ function OutreachQueueCard({
       {status === "not_contacted" && readiness !== "ready" ? (
         <ContactSetupPanel
           facility={facility}
-          defaultOpen
           onAddContact={onAddContact}
           onUpdateContact={onUpdateContact}
         />
@@ -1290,8 +1362,8 @@ function TextFirstCard({
         onUpdateContact={onUpdateContact}
       />
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button tone="primary" onClick={onText}>
-          <Send size={15} /> Text
+        <Button tone={readiness === "ready" ? "primary" : "secondary"} disabled={readiness !== "ready"} onClick={onText}>
+          <Send size={15} /> {readiness === "ready" ? "Text" : blockedTextActionLabel(readiness)}
         </Button>
         <Button onClick={onReview}>
           <MessageSquareText size={15} /> Review
@@ -1469,7 +1541,7 @@ function ImportRowControls({
 }) {
   const actions: Array<{ action: ImportReviewRow["action"]; label: string }> = [
     { action: "use_existing", label: "Use existing facility" },
-    { action: "private_route_stop", label: "Mark private route stop" },
+    { action: "private_route_stop", label: "Private/non-facility stop" },
     { action: "skip", label: "Skip" },
     { action: "create_new", label: "Create new facility" },
   ];
@@ -1525,15 +1597,19 @@ function ImportRowControls({
           />
         </label>
       ) : null}
-      <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
-        Edit address
-      </label>
-      <textarea
-        id={`${idPrefix}-${row.id}-address`}
-        value={row.address}
-        onChange={(event) => onUpdateRow(row.id, { address: event.target.value })}
-        className="mt-1 min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900"
-      />
+      {row.action === "create_new" || row.action === "private_route_stop" ? (
+        <>
+          <label className="mt-3 block text-xs font-bold uppercase text-slate-500" htmlFor={`${idPrefix}-${row.id}-address`}>
+            Location address
+          </label>
+          <textarea
+            id={`${idPrefix}-${row.id}-address`}
+            value={row.address}
+            onChange={(event) => onUpdateRow(row.id, { address: event.target.value })}
+            className="mt-1 min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900"
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1649,11 +1725,11 @@ function TentativeAddConfirmation({
   onRemoveTentative: () => void;
 }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-4">
+    <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="rounded-lg border border-green-200 bg-green-50 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-green-700">Tentative add-on</p>
-          <h2 className="mt-1 text-xl font-black text-green-950">Added tentatively</h2>
+          <h2 className="mt-1 text-xl font-black text-green-950">Added to tentative route</h2>
           <p className="mt-1 text-sm leading-6 text-green-900">You can adjust before starting tomorrow&apos;s route.</p>
         </div>
 
@@ -1706,7 +1782,7 @@ function TentativeAddConfirmation({
           </p>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 mt-4 grid gap-2 rounded-lg bg-white/95 py-2 backdrop-blur sm:static sm:grid-cols-2 sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
           <Button tone="primary" onClick={onBackToRoute}>
             <ArrowLeft size={15} /> Back to route
           </Button>
@@ -1747,6 +1823,9 @@ export default function NearMyRouteApp() {
   const [textPickerFacilityId, setTextPickerFacilityId] = useState<string>();
   const [pendingTextContactByFacilityId, setPendingTextContactByFacilityId] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(false);
+  const [showDemoTools] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1",
+  );
   const idCounterRef = useRef(0);
 
   function nextId(prefix: string) {
@@ -1802,8 +1881,9 @@ export default function NearMyRouteApp() {
   );
 
   const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId);
+  const selectedFilteredOpportunity = opportunities.find((item) => item.facility.id === selectedFacilityId);
   const selectedOpportunity =
-    opportunities.find((item) => item.facility.id === selectedFacilityId) ??
+    selectedFilteredOpportunity ??
     routeFitOpportunities.find((item) => item.facility.id === selectedFacilityId);
   const selectedOutreachLogs = outreachLogs
     .filter((log) => log.facilityId === selectedFacilityId)
@@ -1891,6 +1971,11 @@ export default function NearMyRouteApp() {
   const featuredOpportunity = [...opportunities]
     .filter((opportunity) => opportunity.group !== "Not Worth It Today")
     .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)[0];
+  const routeNeedsLocationReview = currentRouteUnconfirmedFacilities.length > 0;
+  const routeReadinessTitle = routeNeedsLocationReview
+    ? "Tomorrow's route needs location review"
+    : `Tomorrow's route ready`;
+  const routeReadinessSummary = `${orderedRouteStops.length} ${orderedRouteStops.length === 1 ? "stop" : "stops"} - ${routeNeedsLocationReview ? `${currentRouteUnconfirmedFacilities.length} need review` : "locations confirmed"} - ${opportunities.length} add-on candidates`;
 
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);
@@ -2395,9 +2480,9 @@ export default function NearMyRouteApp() {
   }));
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
-      <header className="sticky top-0 z-[500] border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1800px] flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="min-h-screen bg-slate-100 pb-[calc(6rem+env(safe-area-inset-bottom))] text-slate-950 sm:pb-0">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sm:sticky sm:top-0 sm:z-[500]">
+        <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-lg bg-blue-600 text-white">
               <MapPinned size={22} />
@@ -2407,41 +2492,69 @@ export default function NearMyRouteApp() {
               <p className="text-xs font-medium text-slate-500">Route-aware MBSS facility opportunities</p>
             </div>
           </div>
-          <nav className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+          <nav className="hidden flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:flex">
             {(["Near My Route", "Facilities", "Import Schedule", "Outreach"] as AppTab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
+                aria-label={tab}
                 onClick={() => selectTopLevelTab(tab)}
                 className={cx(
                   "rounded-md px-3 py-2 text-[13px] font-bold transition",
                   activeTab === tab ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white",
                 )}
               >
-                {tab}
+                {tabLabels[tab]}
               </button>
             ))}
           </nav>
-          <Button tone="ghost" onClick={resetDemo}>
-            <RotateCcw size={15} /> Reset demo
-          </Button>
+          {showDemoTools ? (
+            <details className="hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm sm:block">
+              <summary className="cursor-pointer font-bold text-slate-600">Demo tools</summary>
+              <div className="mt-3 w-52">
+                <Button className="w-full" tone="ghost" onClick={resetDemo}>
+                  <RotateCcw size={15} /> Reset demo
+                </Button>
+              </div>
+            </details>
+          ) : null}
         </div>
       </header>
+
+      <nav className="fixed inset-x-0 bottom-0 z-[500] border-t border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
+        <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+          {(["Near My Route", "Import Schedule", "Outreach", "Facilities"] as AppTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              aria-label={tab}
+              onClick={() => selectTopLevelTab(tab)}
+              className={cx(
+                "min-h-11 rounded-md px-2 text-xs font-black transition",
+                activeTab === tab ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100",
+              )}
+            >
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </div>
+      </nav>
 
       {activeTab === "Near My Route" ? (
         <>
         {routeView.kind === "review" ? (
-          <main className="mx-auto max-w-2xl px-4 py-4 xl:hidden">
+          <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:hidden">
             <Button tone="ghost" onClick={() => closeFacilityReview(routeView)}>
               <ArrowLeft size={15} /> {reviewBackLabel(routeView)}
             </Button>
             <DetailDrawer
               className="mt-3 rounded-xl border border-slate-200"
               facility={selectedFacility}
-              opportunity={selectedOpportunity}
+              opportunity={routeView.sourceTab === "Near My Route" ? selectedFilteredOpportunity : selectedOpportunity}
               todayStatus={selectedTodayStatus}
               outreachLogs={selectedOutreachLogs}
               showMessage={showMessage}
+              isOnRoute={Boolean(selectedFacility && routeStops.some((stop) => stop.facilityId === selectedFacility.id))}
               onCloseMessage={() => setShowMessage(false)}
               onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
               onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
@@ -2473,54 +2586,43 @@ export default function NearMyRouteApp() {
         ) : null}
 
         <main className={cx(
-          "mx-auto flex max-w-[1800px] flex-col px-4 py-4 xl:h-[calc(100vh-74px)]",
+          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:h-[calc(100vh-74px)]",
           routeView.kind === "review" && "hidden xl:flex",
           routeView.kind === "confirmation" && "hidden",
         )}>
-          <section className="mb-3 hidden gap-2 rounded-xl border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[auto_220px_1fr] lg:items-center">
-            <Button tone="primary" onClick={() => selectTopLevelTab("Import Schedule")} className="w-full lg:w-auto">
-              <Clipboard size={15} /> Import Schedule
-            </Button>
-            <label className="flex h-10 items-center gap-3 rounded-md border border-slate-200 px-3 text-[13px] font-bold text-slate-600">
-              Max detour
-              <select
-                value={maxDetourMinutes}
-                onChange={(event) => setMaxDetourMinutes(Number(event.target.value))}
-                className="ml-auto border-0 bg-transparent text-sm font-black text-slate-950 outline-none"
-              >
-                {[5, 10, 15, 20, 30].map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} min
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid gap-2 md:grid-cols-4">
-              <Toggle
-                label="Due for follow-up"
-                checked={notContactedRecentlyOnly}
-                onChange={setNotContactedRecentlyOnly}
-              />
-              <Toggle label="Known contacts only" checked={knownContactsOnly} onChange={setKnownContactsOnly} />
-              <Toggle
-                label="Same-day friendly only"
-                checked={sameDayFriendlyOnly}
-                onChange={setSameDayFriendlyOnly}
-              />
-              <label className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
-                Due after
-                <input
-                  type="number"
-                  min="1"
-                  value={followUpThresholdDays}
-                  onChange={(event) => setFollowUpThresholdDays(Number(event.target.value))}
-                  className="h-9 w-16 rounded-md border border-slate-200 px-2 text-sm font-bold text-slate-900"
-                />
-              </label>
+          <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Route readiness</p>
+                <h2 className="mt-1 text-lg font-black text-slate-950">{routeReadinessTitle}</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-600">{routeReadinessSummary}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 lg:flex">
+                {routeNeedsLocationReview ? (
+                  <>
+                    <Button tone="primary" onClick={() => openRouteHome(currentRouteUnconfirmedFacilities[0]?.id ?? selectedFacilityId)}>
+                      Review unconfirmed locations
+                    </Button>
+                    <Button disabled ariaLabel="Confirm locations for Maps">
+                      <ExternalLink size={15} /> Open in Google Maps
+                    </Button>
+                  </>
+                ) : (
+                  <Button disabled={isCurrentRouteMapsBlocked} onClick={() => openMapsUrl(currentRouteMapsUrl)}>
+                    <ExternalLink size={15} /> Open in Google Maps
+                  </Button>
+                )}
+                <Button ariaLabel="Import Schedule" onClick={() => selectTopLevelTab("Import Schedule")}>
+                  <Clipboard size={15} /> Import route
+                </Button>
+                <Button onClick={() => featuredOpportunity && openFacilityReview(featuredOpportunity.facility.id)} disabled={!featuredOpportunity}>
+                  <MessageSquareText size={15} /> Review add-on
+                </Button>
+              </div>
             </div>
           </section>
           <div className="flex min-h-0 flex-1 flex-col gap-0 xl:flex-row">
-          <section className="flex w-full shrink-0 flex-col gap-3 rounded-l-xl border border-slate-200 bg-slate-50 p-3 xl:w-[440px] xl:overflow-y-auto">
+          <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 xl:w-[440px] xl:overflow-y-auto xl:rounded-l-xl xl:rounded-r-none">
             <BestAddOnCard
               opportunity={featuredOpportunity}
               todayStatus={
@@ -2535,30 +2637,28 @@ export default function NearMyRouteApp() {
 
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-black text-slate-950">Today status</h2>
+                <h2 className="text-sm font-black text-slate-950">Outreach status</h2>
                 <Badge tone="blue">{currentRouteStatusCounts.reduce((sum, item) => sum + item.count, 0)} on route</Badge>
               </div>
-              <div className="mt-3">
-                <TodayStatusStrip counts={todayCounts} />
+              <div className="mt-2">
+                <StatusSummary counts={todayCounts} />
               </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs font-bold uppercase text-slate-500">Show status counts</summary>
+                <div className="mt-3">
+                <TodayStatusStrip counts={todayCounts} />
+                </div>
+              </details>
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s Route</h2>
-                <div className="flex flex-wrap gap-2">
-                  <Button disabled={isCurrentRouteMapsBlocked} onClick={() => openMapsUrl(currentRouteMapsUrl)}>
-                    <ExternalLink size={15} /> {isCurrentRouteMapsBlocked ? "Confirm locations for Maps" : "Open in Google Maps"}
+                <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s route</h2>
+                {currentRouteSourceMapLink ? (
+                  <Button ariaLabel="Open original map link" onClick={() => openMapsUrl(currentRouteSourceMapLink)}>
+                    <ExternalLink size={15} /> Original map
                   </Button>
-                  <Button onClick={() => selectTopLevelTab("Import Schedule")}>
-                    <Clipboard size={15} /> Import Schedule
-                  </Button>
-                  {currentRouteSourceMapLink ? (
-                    <Button onClick={() => openMapsUrl(currentRouteSourceMapLink)}>
-                      <ExternalLink size={15} /> Open original map link
-                    </Button>
-                  ) : null}
-                </div>
+                ) : null}
               </div>
               {currentRouteMapsWarning ? (
                 <p className="mt-2 rounded-md border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-800">
@@ -2625,35 +2725,31 @@ export default function NearMyRouteApp() {
               onConfirm={confirmFacilityLocation}
             />
 
-            {dogfoodNoteWarning ? (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800 lg:hidden">
-                {dogfoodNoteWarning}
-              </p>
+            {showDemoTools ? (
+              <details className="rounded-lg border border-slate-200 bg-white p-3">
+                <summary className="cursor-pointer text-sm font-black text-slate-950">Demo tools</summary>
+                {dogfoodNoteWarning ? (
+                  <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800">
+                    {dogfoodNoteWarning}
+                  </p>
+                ) : null}
+                <details open className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-sm font-black text-slate-950">
+                    Today route checklist ({dogfoodTasks.filter((task) => dogfoodChecked[task.id]).length}/{dogfoodTasks.length})
+                  </summary>
+                  <div className="mt-3">
+                    <DogfoodChecklist
+                      checked={dogfoodChecked}
+                      notes={dogfoodNotes}
+                      notesWarning={dogfoodNoteWarning}
+                      className="border-0 bg-transparent p-0 shadow-none"
+                      onToggle={updateDogfoodTask}
+                      onNotesChange={updateDogfoodNotes}
+                    />
+                  </div>
+                </details>
+              </details>
             ) : null}
-            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
-              <summary className="cursor-pointer text-sm font-black text-slate-950">
-                Today route checklist ({dogfoodTasks.filter((task) => dogfoodChecked[task.id]).length}/{dogfoodTasks.length})
-              </summary>
-              <div className="mt-3">
-                <DogfoodChecklist
-                  checked={dogfoodChecked}
-                  notes={dogfoodNotes}
-                  notesWarning={dogfoodNoteWarning}
-                  className="border-0 p-0"
-                  onToggle={updateDogfoodTask}
-                  onNotesChange={updateDogfoodNotes}
-                />
-              </div>
-            </details>
-            <div className="hidden lg:block">
-              <DogfoodChecklist
-                checked={dogfoodChecked}
-                notes={dogfoodNotes}
-                notesWarning={dogfoodNoteWarning}
-                onToggle={updateDogfoodTask}
-                onNotesChange={updateDogfoodNotes}
-              />
-            </div>
 
             <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
               <summary className="cursor-pointer text-sm font-black text-slate-950">Opportunity filters</summary>
@@ -2812,7 +2908,7 @@ export default function NearMyRouteApp() {
             </div>
           </section>
 
-          <section className="relative min-h-[560px] flex-1 overflow-hidden border-x border-slate-200 bg-white xl:min-h-0">
+          <section className="relative hidden min-h-[560px] flex-1 overflow-hidden border-x border-slate-200 bg-white xl:block xl:min-h-0">
             <RouteMap
               facilities={facilities}
               routeStops={routeStops}
@@ -2826,10 +2922,11 @@ export default function NearMyRouteApp() {
           <DetailDrawer
             className="hidden xl:block"
             facility={selectedFacility}
-            opportunity={selectedOpportunity}
+            opportunity={selectedFilteredOpportunity}
             todayStatus={selectedTodayStatus}
             outreachLogs={selectedOutreachLogs}
             showMessage={showMessage}
+            isOnRoute={Boolean(selectedFacility && routeStops.some((stop) => stop.facilityId === selectedFacility.id))}
             onCloseMessage={() => setShowMessage(false)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged call attempt.")}
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
@@ -2850,7 +2947,7 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Facilities" ? (
-        <main className="mx-auto grid max-w-[1800px] gap-4 px-4 py-4 xl:grid-cols-[1fr_380px]">
+        <main className="mx-auto grid max-w-[1800px] gap-4 px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:grid-cols-[1fr_380px]">
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-200 p-4">
               <h2 className="text-lg font-black">Facilities</h2>
@@ -2921,8 +3018,8 @@ export default function NearMyRouteApp() {
                         <Badge tone={todayStatusTone(status)}>{todayStatusLabel(status)}</Badge>
                       </div>
                     </button>
-                    <Button className="mt-3 w-full" tone="primary" onClick={() => openFacilityReview(facility.id)}>
-                      Review fit
+                    <Button className="mt-3 w-full" tone="primary" ariaLabel="Review fit" onClick={() => openFacilityReview(facility.id)}>
+                      See why this fits
                     </Button>
                   </article>
                 );
@@ -2978,7 +3075,7 @@ export default function NearMyRouteApp() {
                       <Badge>{friendlyValue(facility.typicalVolume)}</Badge>
                     </span>
                     <span className="justify-self-end rounded-md border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-700">
-                      Review fit
+                      See why this fits
                     </span>
                   </button>
                 );
@@ -2992,6 +3089,7 @@ export default function NearMyRouteApp() {
             todayStatus={selectedTodayStatus}
             outreachLogs={selectedOutreachLogs}
             showMessage={showMessage}
+            isOnRoute={Boolean(selectedFacility && routeStops.some((stop) => stop.facilityId === selectedFacility.id))}
             onCloseMessage={() => setShowMessage(false)}
             onCall={() => selectedFacility && logOutreach(selectedFacility.id, "called", "call", "Logged from Facilities view.")}
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
@@ -3010,9 +3108,10 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Import Schedule" ? (
-        <main className="mx-auto grid max-w-6xl gap-4 px-4 py-4 lg:grid-cols-[420px_1fr]">
+        <main className="mx-auto grid max-w-6xl gap-4 px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 lg:grid-cols-[420px_1fr]">
           <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-lg font-black">Import Schedule</h2>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step 1</p>
+            <h2 className="mt-1 text-lg font-black">Import tomorrow&apos;s route</h2>
             <p className="mt-1 text-sm text-slate-500">
               {importMode === "van_packet"
                 ? "Paste the email body/map link and, if needed, copied PDF table text. PDF table text is used only to identify stop-review hints like Home Health/private stops, then cleared after parsing. Patient details are not saved to review rows."
@@ -3072,8 +3171,8 @@ export default function NearMyRouteApp() {
               />
             )}
             <div className="mt-3 flex gap-2">
-              <Button tone="primary" onClick={parseImportSchedule}>
-                {importMode === "van_packet" ? "Parse Van Packet" : "Parse Schedule"}
+              <Button tone="primary" ariaLabel={importMode === "van_packet" ? "Parse Van Packet" : "Parse Schedule"} onClick={parseImportSchedule}>
+                {importMode === "van_packet" ? "Parse van packet" : "Parse route"}
               </Button>
               <Button
                 onClick={() => {
@@ -3136,7 +3235,15 @@ export default function NearMyRouteApp() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-black">Review imported stops</h2>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step 2</p>
+                <h2 className="mt-1 text-lg font-black">Review imported stops</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-600">
+                  {reviewRows.length === 0
+                    ? "Parse a route to review matches."
+                    : `${reviewRows.length} rows found - ${importSummary.useExisting} matched - ${importSummary.privateRouteStop} private/non-facility - ${importSummary.skipped} skipped - ${importSummary.unresolved} needs review`}
+                </p>
+              </div>
               <div className="hidden lg:block">
                 <Button
                   tone="primary"
@@ -3158,7 +3265,7 @@ export default function NearMyRouteApp() {
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.privateRouteStop}</p>
-                <p className="text-[11px] font-bold uppercase text-slate-500">Private</p>
+                <p className="text-[11px] font-bold uppercase text-slate-500">Private/non-facility</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.skipped}</p>
@@ -3321,7 +3428,7 @@ export default function NearMyRouteApp() {
                                 <option value="needs_review">Needs review</option>
                                 <option value="use_existing">Use selected existing facility</option>
                                 <option value="create_new">Create new facility</option>
-                                <option value="private_route_stop">Private route stop</option>
+                                <option value="private_route_stop">Private/non-facility stop</option>
                                 <option value="skip">Skip row</option>
                               </select>
                             )}
@@ -3344,15 +3451,19 @@ export default function NearMyRouteApp() {
                                     />
                                   </label>
                                 ) : null}
-                                <input
-                                  aria-label={`Address for ${row.facilityName}`}
-                                  value={row.address}
-                                  onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
-                                  className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
-                                />
-                                {row.action === "create_new" ? (
-                                  <p className="mt-1 text-xs text-slate-500">Blank address blocks confirmation.</p>
-                                ) : null}
+                                {row.action === "create_new" || row.action === "private_route_stop" ? (
+                                  <>
+                                    <input
+                                      aria-label={`Address for ${row.facilityName}`}
+                                      value={row.address}
+                                      onChange={(event) => updateReviewRow(row.id, { address: event.target.value })}
+                                      className="h-9 w-full rounded-md border border-slate-200 px-2 text-sm"
+                                    />
+                                    <p className="mt-1 text-xs text-slate-500">Blank address blocks confirmation.</p>
+                                  </>
+                                ) : (
+                                  <p className="text-xs font-semibold text-slate-500">Choose create or private stop to edit a location.</p>
+                                )}
                               </>
                             )}
                           </td>
@@ -3368,7 +3479,7 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Outreach" ? (
-        <main className="mx-auto max-w-6xl px-4 py-4">
+        <main className="mx-auto max-w-6xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-lg font-black">Outreach</h2>
             <p className="mt-1 text-sm text-slate-500">

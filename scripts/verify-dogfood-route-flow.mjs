@@ -130,13 +130,9 @@ try {
   await textFirst.getByText("High volume").waitFor();
   assert.equal(await textFirst.getByText("Memorial SNF").count(), 0);
 
-  await clickVisible(textFirst, "Text");
-  await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
-  await assertApprovedTemplate(page);
-  await page
-    .getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.")
-    .first()
-    .waitFor();
+  const blockedText = textFirst.getByRole("button", { name: "Enter real phone first" });
+  await blockedText.waitFor();
+  assert.equal(await blockedText.isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
 
   await page.getByLabel("Phone for Lisa").first().fill("713-867-5309");
@@ -149,7 +145,9 @@ try {
     "edited phone persisted",
   );
 
-  await clickVisible(page, "Open Messages");
+  await clickVisible(textFirst, "Text");
+  await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
+  await assertApprovedTemplate(page);
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
     .first()
@@ -172,7 +170,7 @@ try {
   );
 
   await clickVisible(page, "Add to route");
-  await page.getByRole("heading", { name: "Added tentatively" }).waitFor();
+  await page.getByRole("heading", { name: "Added to tentative route" }).waitFor();
   await waitForStoredState(
     page,
     (nextState) =>
@@ -204,7 +202,7 @@ try {
   assert.match(openedUrls[0], /destination=29\.7066%2C-95\.5492/);
   assert.match(openedUrls[0], /waypoints=29\.7299%2C-95\.5887/);
 
-  await page.locator("summary").filter({ hasText: "Today route checklist" }).click();
+  await (await firstVisible(page.locator("summary").filter({ hasText: "Demo tools" }), "demo tools")).click();
   for (const label of [
     "Import tomorrow's route",
     "Review text candidates",
@@ -242,7 +240,7 @@ try {
 
   await page.getByRole("heading", { name: "Tomorrow's Route" }).first().waitFor();
   await page.getByText("Memorial SNF").first().waitFor();
-  await page.locator("summary").filter({ hasText: "Today route checklist" }).click();
+  await (await firstVisible(page.locator("summary").filter({ hasText: "Demo tools" }), "demo tools")).click();
   for (const label of [
     "Import tomorrow's route",
     "Review text candidates",
@@ -287,6 +285,7 @@ try {
     { key: storageKey, unsafeNote: "John Smith appeared in the pasted schedule." },
   );
   await page.reload({ waitUntil: "networkidle" });
+  await (await firstVisible(page.locator("summary").filter({ hasText: "Demo tools" }), "demo tools")).click();
   await firstVisible(
     page.getByText("Dogfood notes must stay workflow-only. Remove patient names, clinical details, DOBs, MRNs, or diagnoses before saving."),
     "legacy PHI-like dogfood note warning",

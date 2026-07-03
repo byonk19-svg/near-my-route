@@ -149,7 +149,7 @@ export default function RouteMap({
               <br />
               Stop #{stop.order} - {stop.appointmentTime}
               <br />
-              {status ? todayStatusLabel(status) : "Private route stop"}
+              {status ? todayStatusLabel(status) : "Private/non-facility stop"}
               {facility ? (
                 <>
                   <br />

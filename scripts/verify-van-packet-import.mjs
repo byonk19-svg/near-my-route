@@ -187,8 +187,9 @@ try {
   await clickVisible(page, "Parse Van Packet");
   const learnedAliasCard = page.getByTestId("import-review-card-3");
   await learnedAliasCard.getByRole("heading", { name: "Park Manor Westchase" }).waitFor();
-  const learnedAliasAddress = await firstVisible(learnedAliasCard.getByLabel("Edit address"), "learned alias original address");
-  assert.match(await learnedAliasAddress.inputValue(), /999 Alias Test Rd/);
+  assert.equal(await learnedAliasCard.getByLabel("Edit address").count(), 0);
+  await (await firstVisible(learnedAliasCard.getByText("Show original text"), "learned alias original text disclosure")).click();
+  await firstVisible(learnedAliasCard.getByText(/999 Alias Test Rd/), "learned alias original address");
   await firstVisible(
     learnedAliasCard.getByText("Possible known facility label. Confirm the facility to remember this alias."),
     "learned alias review hint",

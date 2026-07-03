@@ -65,10 +65,9 @@ try {
     (log) => log.facilityId === "encompass-westchase" && log.status === "texted",
   ).length;
 
-  await clickVisibleButton(textFirstCard, "Text");
-
-  await page.getByRole("heading", { name: "Safe outreach template" }).first().waitFor();
-  await page.getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.").first().waitFor();
+  const blockedText = textFirstCard.getByRole("button", { name: "Enter real phone first" });
+  await blockedText.waitFor();
+  assert.equal(await blockedText.isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
   const blockedState = await storedState(page);
   assert.equal(
@@ -86,8 +85,9 @@ try {
         ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "abc",
     "invalid phone persisted",
   );
-  await clickVisibleButton(page, "Open Messages");
-  await page.getByText("This contact does not have a dialable phone number. Enter a real phone number before opening Messages.").first().waitFor();
+  const invalidText = textFirstCard.getByRole("button", { name: "Enter real phone first" });
+  await invalidText.waitFor();
+  assert.equal(await invalidText.isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Mark texted" }).count(), 0);
   const invalidState = await storedState(page);
   assert.equal(
@@ -113,7 +113,7 @@ try {
     "editing a placeholder phone must not unlock manual Texted today logging before retry",
   );
 
-  await clickVisibleButton(page, "Open Messages");
+  await clickVisibleButton(textFirstCard, "Text");
 
   await page
     .getByText("Template copied. Open Messages on your phone, then mark this facility texted.")
@@ -155,11 +155,9 @@ try {
   await clickVisibleButton(mobilePage, "Outreach");
   const mobileTextFirst = await firstVisible(mobilePage.getByTestId("text-first-card"), "mobile Text First card");
   await mobileTextFirst.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
-  await clickVisibleButton(mobileTextFirst, "Text");
-  await mobilePage
-    .getByText("This contact still has a placeholder 555 number. Edit the phone number before opening Messages.")
-    .first()
-    .waitFor();
+  const mobileBlockedText = mobileTextFirst.getByRole("button", { name: "Enter real phone first" });
+  await mobileBlockedText.waitFor();
+  assert.equal(await mobileBlockedText.isDisabled(), true);
   await mobilePage.getByLabel("Phone for Lisa").first().fill("713-867-5309");
   await waitForStoredState(
     mobilePage,
@@ -174,7 +172,7 @@ try {
     (log) => log.facilityId === "encompass-westchase" && log.status === "texted",
   ).length;
 
-  await clickVisibleButton(mobilePage, "Open Messages");
+  await clickVisibleButton(mobileTextFirst, "Text");
   await mobilePage
     .getByText("Template copied and Messages opened. Return here after sending, then mark this facility texted.")
     .first()

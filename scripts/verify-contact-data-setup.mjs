@@ -140,6 +140,7 @@ try {
   const needsPhoneQueue = page.getByTestId("needs-phone-queue");
   const westHoustonCard = needsPhoneQueue.locator("article").filter({ hasText: "West Houston LTACH" }).first();
   await westHoustonCard.getByText("No phone saved").waitFor();
+  await westHoustonCard.locator("summary").filter({ hasText: "Contact setup" }).click();
   await clickVisible(westHoustonCard.getByTestId("contact-setup-west-houston-ltach"), "Add contact");
   const westHoustonNewId = await waitForStoredState(
     page,
