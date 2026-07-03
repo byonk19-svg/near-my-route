@@ -131,6 +131,76 @@ UNMATCHED STOP
   assert.equal(result.rows[1].facilityName, "710 Farm Road");
 });
 
+test("parseVanPacketText ignores PDF table headers and extracts nearby facility labels", () => {
+  const facilities = [
+    {
+      id: "legend-oaks-northwest",
+      name: "Legend Oaks Northwest",
+      aliases: ["LEGEND OAKS NORTHWEST"],
+      address: "8902 West Rd, Houston, TX 77064",
+      lat: 29.9,
+      lng: -95.5,
+      contacts: [],
+    },
+    {
+      id: "park-manor-cypress-station",
+      name: "Park Manor at Cypress Station",
+      aliases: ["PARK MANOR AT CYPRESS ST"],
+      address: "420 Lantern Bend Dr, Houston, TX 77090",
+      lat: 30.0,
+      lng: -95.4,
+      contacts: [],
+    },
+    {
+      id: "encompass-vintage",
+      name: "Encompass The Vintage",
+      aliases: ["ENCOMPASS THE VINTAGE"],
+      address: "20180 Chasewood Park Dr, Houston, TX 77070",
+      lat: 29.99,
+      lng: -95.57,
+      contacts: [],
+    },
+  ];
+  const packet = `NAME OF TEAM MEMBERS: Driver One, SLP Two
+VAN NAME: Sample Van
+MEET DETAILS: 07:30 AM HEB = 9503 Jones Rd, Houston, TX 77065
+MAP LINK: https://www.google.com/maps/dir/9503+Jones+Rd,+Houston,+TX+77065/8902+West+Rd,+Houston,+TX+77064/420+Lantern+Bend+Dr,+Houston,+TX+77090/20180+Chasewood+Park+Dr,+Houston,+TX+77070/16306+Spring+Cypress+Rd,+Cypress,+TX+77429/Home+Health,+100+Example+St,+Houston,+TX/9503+Jones+Rd,+Houston,+TX+77065`;
+  const pdfText = `TIME FACILITY SPOKE WITH SLP PATIENT NAME REFERRING MD STATUS COMMENTS
+LEGEND OAKS NORTHWEST
+FACILITY 713-000-0000
+(8902 WEST ROAD, HOUSTON, TX 77064)
+TIME FACILITY
+PARK MANOR AT CYPRESS ST (420 LANTERN BEND DR, HOUSTON, TX 77090)
+TIME FACILITY STATUS COMMENTS
+ENCOMPASS THE VINTAGE
+Patient Name
+Referring MD
+(20180 CHASEWOOD PARK DR., HOUSTON, TX 77070)
+ASSISTED LIVING (16306 SPRING CYPRESS RD, CYPRESS, TX 77429)
+HOME HEALTH
+100 EXAMPLE ST, HOUSTON, TX`;
+
+  const result = parseVanPacketText(packet, facilities, { supplementalText: pdfText });
+
+  assert.equal(result.summary.supplementalTextUsed, true);
+  assert.equal(result.summary.routeAnchorHints, 2);
+  assert.equal(result.summary.privateStopHints, 1);
+  assert.equal(result.rows[0].action, "skip");
+  assert.equal(result.rows[1].aliasCandidate, "LEGEND OAKS NORTHWEST");
+  assert.equal(result.rows[1].matchedFacilityId, "legend-oaks-northwest");
+  assert.equal(result.rows[2].aliasCandidate, "PARK MANOR AT CYPRESS ST");
+  assert.equal(result.rows[2].matchedFacilityId, "park-manor-cypress-station");
+  assert.equal(result.rows[3].aliasCandidate, "ENCOMPASS THE VINTAGE");
+  assert.equal(result.rows[3].matchedFacilityId, "encompass-vintage");
+  assert.equal(result.rows[4].aliasCandidate, undefined);
+  assert.equal(result.rows[4].action, "needs_review");
+  assert.equal(result.rows[5].action, "private_route_stop");
+  assert.equal(JSON.stringify(result).includes("TIME FACILITY"), false);
+  assert.equal(JSON.stringify(result).includes("ASSISTED LIVING"), false);
+  assert.equal(JSON.stringify(result).includes("Patient Name"), false);
+  assert.equal(JSON.stringify(result).includes("Referring MD"), false);
+});
+
 test("parseVanPacketText keeps alias-only matches in review but auto-uses address-supported aliases", () => {
   const facilities = [
     {

@@ -25,14 +25,17 @@ Referring MD: PRIVATE_DETAIL
 MAP LINK
 ${sourceMapLink}`;
 const pdfTableText = `HOUSTON VAN 1
+TIME FACILITY SPOKE WITH SLP PATIENT NAME REFERRING MD STATUS COMMENTS
 MEMORIAL SNF
 12620 MEMORIAL DR, HOUSTON, TX
+TIME FACILITY
 HOME HEALTH
 100 EXAMPLE ST, HOUSTON, TX
 Patient: PRIVATE_DETAIL
 Referring MD: PRIVATE_DETAIL
-WESTCHASE OUTPOST
-999 ALIAS TEST RD, HOUSTON, TX
+TIME FACILITY STATUS COMMENTS
+WESTCHASE OUTPOST (999 ALIAS TEST RD, HOUSTON, TX)
+TIME FACILITY
 PARK MANOR WESTCHASE
 11910 RICHMOND AVENUE, HOUSTON, TX`;
 
@@ -104,6 +107,7 @@ try {
   assert.equal(await summary.getByText("713-555-1212").count(), 0);
   assert.equal(await page.getByLabel("Email body and map link").inputValue(), "");
   assert.equal(await page.getByLabel("PDF table text").inputValue(), "");
+  assert.equal(await page.getByText("TIME FACILITY").count(), 0);
 
   await page.getByText("Route start/end", { exact: true }).waitFor();
   await page.getByText("Duplicate return point skipped").waitFor();
