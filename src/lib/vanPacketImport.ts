@@ -16,6 +16,30 @@ const PRIVATE_DETAIL_PATTERN = /\b(patient|patients|pts?|dob|date of birth|mrn|m
 const CONTACT_DETAIL_PATTERN = /(?:\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|[^\s@]+@[^\s@]+\.[^\s@]+)/i;
 const SAFE_OPERATIONAL_NOTE_PATTERN = /\b(park|parking|entrance|enter|door|side of building|dvd|jump drive|binder|facility|fac|staff|schedule)\b/i;
 const NON_FACILITY_STOP_PATTERN = /\b(home depot|meet point|meeting point|meet at|return to)\b/i;
+const TABLE_HEADER_WORDS = new Set([
+  "address",
+  "comments",
+  "date",
+  "facility",
+  "f",
+  "fu",
+  "md",
+  "name",
+  "patient",
+  "pt",
+  "pts",
+  "referring",
+  "slp",
+  "spoke",
+  "status",
+  "studies",
+  "study",
+  "team",
+  "time",
+  "van",
+  "with",
+]);
+const GENERIC_PDF_LABELS = new Set(["assisted living"]);
 const ADDRESS_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\binterstate\b/g, "i"],
   [/\bih\b/g, "i"],
@@ -188,6 +212,77 @@ function lineLooksLikeAddress(line: string) {
   return /^\s*\d{1,6}\b/.test(line) || /\b\d{1,6}\s+[^,\n]+,\s*[^,\n]+/i.test(line);
 }
 
+function normalizedLabelWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[#/:()[\]*.,-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isTableHeaderLabel(value?: string) {
+  if (!value) return false;
+  const words = normalizedLabelWords(value);
+  if (words.length === 0) return false;
+  const headerWordCount = words.filter((word) => TABLE_HEADER_WORDS.has(word)).length;
+  return (
+    GENERIC_PDF_LABELS.has(words.join(" ")) ||
+    headerWordCount === words.length ||
+    (words.length >= 3 && headerWordCount / words.length >= 0.7)
+  );
+}
+
+function removeAddressFromLine(line: string, address: string) {
+  const addressParts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const streetAddress = addressParts.find((part) => /^\d{1,6}\b/.test(part)) ?? addressParts[0];
+  if (!streetAddress) return line;
+
+  const streetNumber = streetAddress.match(/\b\d{1,6}\b/)?.[0];
+  if (streetNumber) {
+    const streetNumberIndex = line.search(new RegExp(`\\b${streetNumber}\\b`));
+    if (streetNumberIndex >= 0) return line.slice(0, streetNumberIndex);
+  }
+
+  const normalizedStreet = normalizeImportValue(streetAddress);
+  const compactStreet = compactRouteValue(streetAddress);
+  const candidates = [
+    line.indexOf(streetAddress),
+    line.toLowerCase().indexOf(streetAddress.toLowerCase()),
+    normalizeImportValue(line).indexOf(normalizedStreet),
+    compactRouteValue(line).indexOf(compactStreet),
+  ].filter((index) => index >= 0);
+  const addressStart = candidates.length > 0 ? Math.min(...candidates) : -1;
+  if (addressStart < 0) return line;
+  return line.slice(0, addressStart);
+}
+
+function extractSameLineLabel(line: string, address: string) {
+  const beforeAddress = removeAddressFromLine(line, address)
+    .replace(/\b[A-Z]{1,4}\d{3,}[A-Z]?\s*[-–]\s*/i, " ")
+    .replace(/\b\d{1,2}:\d{2}\s*[ap]?\s*[-–]?\s*/gi, " ")
+    .replace(/\b\d+\s*(?:new\s*)?pts?\b/gi, " ")
+    .replace(/[()=]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return beforeAddress || undefined;
+}
+
+function usablePdfLabel(line?: string) {
+  if (!line) return undefined;
+  const trimmed = line.trim();
+  if (!trimmed) return undefined;
+  if (isTableHeaderLabel(trimmed)) return undefined;
+  if (PRIVATE_DETAIL_PATTERN.test(trimmed) || CONTACT_DETAIL_PATTERN.test(trimmed)) return undefined;
+  if (lineLooksLikeAddress(trimmed)) return undefined;
+
+  const aliasCandidate = sanitizeFacilityAlias(trimmed);
+  if (!aliasCandidate || !isSafeFacilityAlias(aliasCandidate) || isTableHeaderLabel(aliasCandidate)) return undefined;
+  return aliasCandidate;
+}
+
 function stopContext(text: string | undefined, address: string) {
   const key = stopKey(address);
   if (!text || !key) return undefined;
@@ -195,13 +290,20 @@ function stopContext(text: string | undefined, address: string) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const index = lines.findIndex((line) => normalizeImportValue(line).includes(normalizedKey));
   if (index < 0) return undefined;
-  const previousLabel = [...lines.slice(Math.max(0, index - 3), index)]
-    .reverse()
-    .find((line) => !PRIVATE_DETAIL_PATTERN.test(line) && !CONTACT_DETAIL_PATTERN.test(line) && !lineLooksLikeAddress(line));
-  const aliasCandidate = sanitizeFacilityAlias(previousLabel);
+
+  const sameLineLabelText = extractSameLineLabel(lines[index], address);
+  const sameLineLabel = usablePdfLabel(sameLineLabelText);
+  if (sameLineLabelText && /[a-z]/i.test(sameLineLabelText) && !sameLineLabel) {
+    return {
+      previousLabel: undefined,
+      aliasCandidate: undefined,
+      context: [lines[index], lines[index + 1]].filter(Boolean).join("\n"),
+    };
+  }
+  const previousLabel = sameLineLabel ?? [...lines.slice(Math.max(0, index - 5), index)].reverse().map(usablePdfLabel).find(Boolean);
   return {
-    previousLabel: aliasCandidate && isSafeFacilityAlias(aliasCandidate) ? aliasCandidate : previousLabel,
-    aliasCandidate: aliasCandidate && isSafeFacilityAlias(aliasCandidate) ? aliasCandidate : undefined,
+    previousLabel,
+    aliasCandidate: previousLabel,
     context: [previousLabel, lines[index], lines[index + 1]].filter(Boolean).join("\n"),
   };
 }
