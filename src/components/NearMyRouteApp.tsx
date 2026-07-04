@@ -4,17 +4,23 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Bell,
+  CalendarDays,
   Check,
+  CheckCircle,
   Clipboard,
+  Download,
   ExternalLink,
   Filter,
   MapPinned,
   MessageSquareText,
   Phone,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Send,
+  Settings,
   Trash2,
   Timer,
 } from "lucide-react";
@@ -230,6 +236,70 @@ function StatusSummary({ counts }: { counts: Array<{ status: TodayStatus; label:
       {visibleCounts.map(({ label, count }) => `${count} ${label.toLowerCase()}`).join(" - ")}
     </p>
   );
+}
+
+function statusCount(counts: Array<{ status: TodayStatus; label: string; count: number }>, status: TodayStatus) {
+  return counts.find((item) => item.status === status)?.count ?? 0;
+}
+
+function dashboardBadgeTone(status?: TodayStatus | RouteStop["status"]): "blue" | "orange" | "green" | "red" | "slate" {
+  if (status === "confirmed" || status === "added" || status === "possible_add_on") return "green";
+  if (status === "texted_today" || status === "waiting") return "blue";
+  if (status === "tentative") return "orange";
+  if (status === "planned" || status === "not_contacted") return "slate";
+  if (status === "do_not_contact" || status === "no_patients_today") return "red";
+  return "blue";
+}
+
+function DashboardMetric({
+  label,
+  value,
+  detail,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: "blue" | "green" | "red" | "slate";
+}) {
+  return (
+    <div
+      className={cx(
+        "border border-slate-300 bg-white p-3",
+        tone === "blue" && "border-blue-700 bg-blue-50/30",
+        tone === "green" && "border-green-200",
+        tone === "red" && "border-red-200 bg-red-50/40",
+      )}
+    >
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">{label}</p>
+      <p
+        className={cx(
+          "mt-2 text-xl font-bold tracking-tight text-slate-950",
+          tone === "blue" && "text-blue-700",
+          tone === "green" && "text-green-700",
+          tone === "red" && "text-red-700",
+        )}
+      >
+        {value}
+      </p>
+      {detail ? <p className="mt-1 text-xs font-medium text-slate-600">{detail}</p> : null}
+    </div>
+  );
+}
+
+function formatStableTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "time unknown";
+  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")} UTC`;
+}
+
+function formatStableDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "time unknown";
+  return [
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`,
+    formatStableTime(value),
+  ].join(" ");
 }
 
 function blockedTextActionLabel(readiness: ReturnType<typeof textReadiness>) {
@@ -486,6 +556,552 @@ function LocationConfirmationQueue({
         />
       </div>
     </section>
+  );
+}
+
+function DesktopRouteOverviewPanel({
+  facilities,
+  routeStops,
+  opportunities,
+  outreachLogs,
+  todayCounts,
+  onExportSummary,
+}: {
+  facilities: Facility[];
+  routeStops: RouteStop[];
+  opportunities: Opportunity[];
+  outreachLogs: OutreachLog[];
+  todayCounts: Array<{ status: TodayStatus; label: string; count: number }>;
+  onExportSummary: () => void;
+}) {
+  const orderedStops = [...routeStops].sort((a, b) => a.order - b.order);
+  const activeStopCount = orderedStops.length;
+  const studyCount = orderedStops.reduce((sum, stop) => sum + (stop.studyCount ?? 0), 0);
+  const bestDetour = opportunities
+    .filter((opportunity) => opportunity.group !== "Not Worth It Today")
+    .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)[0]?.addedDriveMinutes;
+  const addedCount = statusCount(todayCounts, "added");
+  const waitingCount = statusCount(todayCounts, "waiting");
+  const notContactedCount = statusCount(todayCounts, "not_contacted");
+
+  return (
+    <aside className="hidden min-h-0 border-r border-slate-300 bg-white xl:flex xl:w-80 xl:flex-col xl:overflow-y-auto">
+      <div className="border-b border-slate-300 p-5">
+        <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">Route overview</h2>
+        <div className="relative mb-4 h-48 overflow-hidden rounded border border-slate-300 bg-[#e5eeff] shadow-inner">
+          <RouteMap
+            facilities={facilities}
+            routeStops={routeStops}
+            opportunities={opportunities}
+            outreachLogs={outreachLogs}
+            selectedFacilityId={opportunities[0]?.facility.id}
+            onSelectFacility={() => undefined}
+          />
+          <div className="absolute left-3 top-3 rounded bg-blue-700 px-3 py-1 text-[11px] font-bold text-white shadow-sm">
+            {activeStopCount} Active Stops
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <DashboardMetric
+            label="Total detour"
+            value={bestDetour === undefined ? "--" : `+${bestDetour} min`}
+            tone={bestDetour === undefined ? "slate" : "red"}
+          />
+          <DashboardMetric label="Studies" value={`${studyCount} ${studyCount === 1 ? "Study" : "Studies"}`} />
+        </div>
+        <div className="mt-5 border-t border-slate-300 pt-4">
+          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">
+            Projected day impact
+          </h3>
+          <div className="space-y-2 rounded border border-slate-300 bg-[#eff4ff] p-3 text-xs">
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-600">Drive Time</span>
+              <span className="font-mono text-slate-950">
+                baseline <span className="text-red-700">+{bestDetour ?? 0} min</span>
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-600">Route Stops</span>
+              <span className="font-mono text-slate-950">{activeStopCount}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-600">Efficiency</span>
+              <span className="font-bold text-green-700">{bestDetour === undefined ? "No candidate" : "High fit"}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-5">
+        <h2 className="mb-4 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">Outreach funnel</h2>
+        <div className="space-y-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-3 text-slate-900">
+              <span className="h-2 w-2 rounded-full bg-slate-300" /> Not Contacted
+            </span>
+            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{notContactedCount}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-3 text-slate-900">
+              <span className="h-2 w-2 rounded-full bg-blue-400" /> Pending Resp.
+            </span>
+            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{waitingCount}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-3 text-slate-900">
+              <span className="h-2 w-2 rounded-full bg-blue-700" /> Added to Route
+            </span>
+            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{addedCount}</span>
+          </div>
+        </div>
+        <div className="mt-10 grid gap-2">
+          <Button onClick={onExportSummary}>
+            <Download size={15} /> Export Summary
+          </Button>
+          <Button disabled>
+            <RefreshCw size={15} /> Re-calculate Route
+          </Button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function DesktopRouteTable({
+  routeStops,
+  facilityById,
+  featuredOpportunity,
+  selectedFacilityId,
+  todayStatusByFacilityId,
+  routeViewKind,
+  onSelectFacility,
+  onReviewFacility,
+}: {
+  routeStops: RouteStop[];
+  facilityById: Map<string, Facility>;
+  featuredOpportunity?: Opportunity;
+  selectedFacilityId?: string;
+  todayStatusByFacilityId: Map<string, TodayStatus>;
+  routeViewKind: RouteView["kind"];
+  onSelectFacility: (facilityId: string) => void;
+  onReviewFacility: (facilityId: string) => void;
+}) {
+  const orderedStops = [...routeStops].sort((a, b) => a.order - b.order);
+  const insertAfterStopId = featuredOpportunity?.bestInsertionAfterStopId;
+  const rows: Array<{ kind: "stop"; stop: RouteStop } | { kind: "candidate"; opportunity: Opportunity } | { kind: "empty" }> = [];
+
+  orderedStops.forEach((stop, index) => {
+    rows.push({ kind: "stop", stop });
+    if (featuredOpportunity && stop.id === insertAfterStopId) rows.push({ kind: "candidate", opportunity: featuredOpportunity });
+    if (!featuredOpportunity && index === Math.min(1, orderedStops.length - 1)) rows.push({ kind: "empty" });
+  });
+
+  return (
+    <section className="min-h-0 flex-1 overflow-y-auto border-r border-slate-300 bg-white">
+      <div className="p-8">
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-950">Planned Route: Tomorrow</h2>
+            <p className="mt-1 text-base text-slate-700">Scheduled stops and proximity candidates</p>
+          </div>
+          <select className="h-12 rounded border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 focus:ring-1 focus:ring-blue-700">
+            <option>Sort by: Route Order</option>
+            <option>Sort by: Detour Time</option>
+          </select>
+        </div>
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-300 text-[12px] uppercase tracking-[0.12em] text-slate-700">
+              <th className="w-14 px-3 py-3 font-bold">Seq</th>
+              <th className="px-3 py-3 font-bold">Facility Details</th>
+              <th className="w-36 px-3 py-3 font-bold">Status</th>
+              <th className="w-40 px-3 py-3 font-bold">Schedule</th>
+              <th className="w-36 px-3 py-3 font-bold">Shift</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              if (row.kind === "empty") {
+                return (
+                  <tr key="empty-candidates" className="border-b border-[#eff4ff]">
+                    <td className="px-3 py-5 text-slate-500">--</td>
+                    <td colSpan={4} className="px-3 py-5 text-center italic text-slate-600">
+                      No candidates matching filters
+                    </td>
+                  </tr>
+                );
+              }
+
+              if (row.kind === "candidate") {
+                const opportunity = row.opportunity;
+                return (
+                  <tr
+                    key={`candidate-${opportunity.facility.id}`}
+                    className={cx(
+                      "cursor-pointer border-b border-[#eff4ff] border-l-4 border-l-red-700 bg-red-50/60 align-top",
+                    )}
+                    onClick={() => onSelectFacility(opportunity.facility.id)}
+                  >
+                    <td className="px-3 py-5 text-base font-bold text-red-700">ADD</td>
+                    <td className="px-3 py-5">
+                      <button type="button" onClick={() => onReviewFacility(opportunity.facility.id)} className="text-left">
+                        <span className="flex items-center gap-2">
+                          <span className="text-base font-bold text-slate-950">{opportunity.facility.name}</span>
+                          <span className="rounded bg-red-700 px-2 py-1 text-[10px] font-bold uppercase leading-none text-white">
+                            Best fit
+                          </span>
+                        </span>
+                        <span className="mt-1 block text-sm text-slate-700">
+                          Proximity: {opportunity.nearestStopDistanceMiles} miles from {opportunity.nearestStopName}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="px-3 py-5">
+                      <Badge tone="red">+{opportunity.addedDriveMinutes} min detour</Badge>
+                    </td>
+                    <td className="px-3 py-5">
+                      <p className="font-bold text-slate-950">Target Outreach</p>
+                      <p className="text-xs text-slate-600">{opportunity.reasonBadges[0] ?? "Route fit"}</p>
+                    </td>
+                    <td className="px-3 py-5">
+                      <p className="font-bold text-red-700">+{opportunity.addedDriveMinutes} min</p>
+                      <p className="text-[11px] uppercase text-slate-600">Impacts next stop</p>
+                    </td>
+                  </tr>
+                );
+              }
+
+              const stop = row.stop;
+              const facility = facilityById.get(stop.facilityId);
+              const location = stop.privateLocation ?? facility;
+              const todayStatus = facility ? todayStatusByFacilityId.get(facility.id) : undefined;
+              const isSelected = facility?.id === selectedFacilityId;
+              return (
+                <tr
+                  key={stop.id}
+                  className={cx(
+                    "border-b border-[#eff4ff] align-top",
+                    isSelected && "bg-[#f8f9ff]",
+                    routeViewKind === "confirmation" && stop.status === "tentative" && "bg-green-50/70",
+                  )}
+                >
+                  <td className={cx("px-3 py-5 text-base font-bold", isSelected ? "text-blue-700" : "text-slate-700")}>
+                    {String(stop.order).padStart(2, "0")}
+                  </td>
+                  <td className="px-3 py-5">
+                    <button
+                      type="button"
+                      disabled={!facility}
+                      onClick={() => facility && onSelectFacility(facility.id)}
+                      className="block text-left disabled:cursor-default"
+                    >
+                      <span className={cx("block text-base font-bold", isSelected ? "text-blue-700" : "text-slate-950")}>
+                        {location?.name ?? "Unknown facility"}
+                      </span>
+                      <span className="mt-1 block max-w-56 text-sm text-slate-700">{location?.address}</span>
+                    </button>
+                  </td>
+                  <td className="px-3 py-5">
+                    <Badge tone={dashboardBadgeTone(todayStatus ?? stop.status)}>
+                      {stop.status === "tentative" ? "Added" : todayStatus ? todayStatusLabel(todayStatus) : friendlyValue(stop.status)}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-5">
+                    <p className="font-medium text-slate-950">{stop.appointmentTime ?? "Time TBD"}</p>
+                    <p className="text-xs text-slate-600">
+                      {stop.studyCount ?? 0} {(stop.studyCount ?? 0) === 1 ? "Study" : "Studies"}
+                    </p>
+                  </td>
+                  <td className="px-3 py-5">
+                    {stop.routeImpact ? (
+                      <>
+                        <p className="font-bold text-red-700">+{stop.routeImpact.addedDriveMinutes} min</p>
+                        <p className="text-xs italic text-slate-600">Tentative</p>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">--</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function DesktopCandidatePanel({
+  facility,
+  opportunity,
+  todayStatus,
+  outreachLogs,
+  isOnRoute,
+  showAddedSuccess,
+  onStartText,
+  onLogStatus,
+  onAddRoute,
+  onRemoveAddOn,
+  onPreviewRoute,
+}: {
+  facility?: Facility;
+  opportunity?: Opportunity;
+  todayStatus?: TodayStatus;
+  outreachLogs: OutreachLog[];
+  isOnRoute: boolean;
+  showAddedSuccess: boolean;
+  onStartText: () => void;
+  onLogStatus: (status: OutreachStatus, notes: string) => void;
+  onAddRoute: () => void;
+  onRemoveAddOn: () => void;
+  onPreviewRoute: () => void;
+}) {
+  if (!facility) {
+    return (
+      <aside className="hidden w-[30rem] bg-[#f8f9ff] xl:grid xl:place-items-center">
+        <div className="max-w-sm px-8 text-center">
+          <div className="mx-auto grid h-28 w-28 place-items-center rounded-full bg-[#d3e4fe] text-slate-400">
+            <Search size={44} />
+          </div>
+          <h2 className="mt-6 text-2xl font-bold text-slate-950">Select a candidate</h2>
+          <p className="mt-4 text-base leading-7 text-slate-700">
+            Choose a facility from the route list or map to view integration details and outreach history.
+          </p>
+        </div>
+      </aside>
+    );
+  }
+
+  const contact = primaryContact(facility);
+  const readiness = textReadiness(facility);
+  const canText = readiness === "ready";
+  const lastLog = outreachLogs[0];
+  const conversion = opportunity ? `${Math.min(100, Math.max(0, Math.round(opportunity.score)))}%` : isOnRoute ? "On route" : "--";
+  const routeImpactLabel = opportunity
+    ? `This stop adds ${opportunity.addedDriveMinutes} minutes near ${opportunity.nearestStopName}.`
+    : isOnRoute
+      ? "This facility is already part of tomorrow's route."
+      : "No route fit is currently available.";
+
+  return (
+    <aside className="hidden min-h-0 w-[30rem] overflow-y-auto bg-[#f8f9ff] xl:block">
+      <div className="space-y-7 p-8">
+        <div className="border-b border-slate-300 pb-5">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-[12px] font-bold uppercase tracking-wide text-blue-700">Candidate detail</p>
+            <p className="text-xs font-medium text-slate-700">ID: {facility.id.toUpperCase().slice(0, 8)}</p>
+          </div>
+          <h2 className="mt-5 text-2xl font-bold tracking-tight text-slate-950">{facility.name}</h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <DashboardMetric label="Last contact" value={formatDaysAgo(facility.lastContacted)} detail="Target: < 14 Days" />
+          <DashboardMetric label="Conversion" value={conversion} detail={opportunity ? "Route fit score" : undefined} tone="green" />
+          <DashboardMetric label="Last visit" value={formatDaysAgo(facility.lastVisited)} />
+          <DashboardMetric label="Friendly" value={friendlyValue(facility.sameDayFriendly)} />
+        </div>
+
+        <section>
+          <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-slate-700">Key contact</h3>
+          <div className="border border-slate-300 bg-white p-5">
+            {contact ? (
+              <>
+                <div className="flex items-center gap-4">
+                  <div className="grid h-10 w-10 place-items-center rounded-full bg-[#d3e4fe] text-sm font-bold text-blue-700">
+                    {contact.name.slice(0, 1)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-bold text-slate-950">
+                      {contact.name} <span className="font-medium">({contact.role ?? "SLP Contact"})</span>
+                    </p>
+                    <p className="text-sm font-medium text-slate-900">{contact.phone ?? contact.email ?? "No phone saved"}</p>
+                  </div>
+                  <Phone size={18} className="text-blue-700" />
+                </div>
+                {isPlaceholderPhoneNumber(contact.phone) ? (
+                  <p className="mt-4 border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                    Replace this placeholder number before opening Messages.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm font-medium text-slate-600">No known SLP contact yet.</p>
+            )}
+            {facility.notes ? (
+              <p className="mt-4 border border-slate-300 bg-[#eff4ff] p-3 text-sm italic leading-6 text-slate-800">
+                &quot;{facility.notes}&quot;
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-slate-700">Route integration</h3>
+          <div className="border border-slate-300 bg-white p-5">
+            <div className="grid grid-cols-[auto_1fr_auto_1fr_auto] items-center gap-3">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-[#e5eeff] text-xs font-bold text-slate-700">02</span>
+              <span className="h-2 rounded-full bg-red-200">
+                <span className="block h-2 w-1/3 rounded-full bg-red-700" />
+              </span>
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-700 text-[11px] font-bold text-white">ADD</span>
+              <span className="h-2 rounded-full bg-[#e5eeff]" />
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-[#e5eeff] text-xs font-bold text-slate-700">03</span>
+            </div>
+            <p className="mt-5 text-sm leading-6 text-slate-800">{routeImpactLabel}</p>
+            {opportunity ? (
+              <button type="button" onClick={onPreviewRoute} className="mt-3 text-sm font-bold text-blue-700">
+                Preview route handoff
+              </button>
+            ) : null}
+          </div>
+        </section>
+
+        {showAddedSuccess || todayStatus === "added" ? (
+          <div className="flex items-center justify-center gap-3 bg-green-600 px-4 py-3 text-base font-bold text-white">
+            <Check size={18} /> Stop added to route
+          </div>
+        ) : canText ? (
+          <Button className="w-full" tone="primary" onClick={onStartText}>
+            <Send size={16} /> Execute Messaging
+          </Button>
+        ) : (
+          <Button className="w-full" disabled>
+            <Send size={16} /> {blockedTextActionLabel(readiness)}
+          </Button>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Button onClick={() => onLogStatus("no_answer", "Waiting for facility response.")}>Mark Waiting</Button>
+          <Button onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
+            Negative Log
+          </Button>
+        </div>
+        {todayStatus === "possible_add_on" && opportunity ? (
+          <Button className="w-full" tone="primary" onClick={onAddRoute}>
+            <Plus size={15} /> Add to route
+          </Button>
+        ) : null}
+        {showAddedSuccess ? (
+          <Button className="w-full" tone="danger" onClick={onRemoveAddOn}>
+            <Trash2 size={15} /> Remove tentative stop
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            tone="danger"
+            onClick={() => onLogStatus("do_not_contact", "Removed from recommendations from route planning.")}
+          >
+            Remove from Recommendations
+          </Button>
+        )}
+        {lastLog ? (
+          <p className="border-t border-slate-300 pt-4 text-xs font-medium text-slate-600">
+            Last outreach event: {todayStatusLabel(todayStatus ?? "not_contacted")} at {formatStableTime(lastLog.createdAt)}
+          </p>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function DesktopRouteDashboard({
+  facilities,
+  routeStops,
+  opportunities,
+  outreachLogs,
+  selectedFacility,
+  selectedOpportunity,
+  selectedTodayStatus,
+  selectedOutreachLogs,
+  featuredOpportunity,
+  facilityById,
+  todayStatusByFacilityId,
+  todayCounts,
+  routeViewKind,
+  showAddedSuccess,
+  onSelectFacility,
+  onReviewFacility,
+  onExportSummary,
+  onStartText,
+  onLogStatus,
+  onAddRoute,
+  onRemoveAddOn,
+  onPreviewRoute,
+}: {
+  facilities: Facility[];
+  routeStops: RouteStop[];
+  opportunities: Opportunity[];
+  outreachLogs: OutreachLog[];
+  selectedFacility?: Facility;
+  selectedOpportunity?: Opportunity;
+  selectedTodayStatus?: TodayStatus;
+  selectedOutreachLogs: OutreachLog[];
+  featuredOpportunity?: Opportunity;
+  facilityById: Map<string, Facility>;
+  todayStatusByFacilityId: Map<string, TodayStatus>;
+  todayCounts: Array<{ status: TodayStatus; label: string; count: number }>;
+  routeViewKind: RouteView["kind"];
+  showAddedSuccess: boolean;
+  onSelectFacility: (facilityId: string) => void;
+  onReviewFacility: (facilityId: string) => void;
+  onExportSummary: () => void;
+  onStartText: () => void;
+  onLogStatus: (status: OutreachStatus, notes: string) => void;
+  onAddRoute: () => void;
+  onRemoveAddOn: () => void;
+  onPreviewRoute: () => void;
+}) {
+  const dashboardFacility = showAddedSuccess ? selectedFacility : selectedFacility ?? featuredOpportunity?.facility;
+  const dashboardOpportunity =
+    dashboardFacility && featuredOpportunity?.facility.id === dashboardFacility.id
+      ? selectedOpportunity ?? featuredOpportunity
+      : selectedOpportunity?.facility.id === dashboardFacility?.id
+        ? selectedOpportunity
+        : undefined;
+  const dashboardTodayStatus = dashboardFacility ? todayStatusByFacilityId.get(dashboardFacility.id) : undefined;
+  const dashboardOutreachLogs = dashboardFacility
+    ? outreachLogs.filter((log) => log.facilityId === dashboardFacility.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : [];
+
+  return (
+    <div className="relative hidden min-h-0 flex-1 xl:flex">
+      {showAddedSuccess ? (
+        <div className="absolute left-1/2 top-4 z-[100] flex -translate-x-1/2 items-center gap-3 bg-green-600 px-6 py-3 text-base font-bold text-white shadow-lg">
+          <CheckCircle size={20} /> Stop added to route successfully
+        </div>
+      ) : null}
+      <DesktopRouteOverviewPanel
+        facilities={facilities}
+        routeStops={routeStops}
+        opportunities={opportunities}
+        outreachLogs={outreachLogs}
+        todayCounts={todayCounts}
+        onExportSummary={onExportSummary}
+      />
+      <DesktopRouteTable
+        routeStops={routeStops}
+        facilityById={facilityById}
+        featuredOpportunity={showAddedSuccess ? undefined : featuredOpportunity}
+        selectedFacilityId={dashboardFacility?.id}
+        todayStatusByFacilityId={todayStatusByFacilityId}
+        routeViewKind={routeViewKind}
+        onSelectFacility={onSelectFacility}
+        onReviewFacility={onReviewFacility}
+      />
+      <DesktopCandidatePanel
+        facility={dashboardFacility}
+        opportunity={dashboardOpportunity}
+        todayStatus={dashboardTodayStatus ?? selectedTodayStatus}
+        outreachLogs={dashboardOutreachLogs.length > 0 ? dashboardOutreachLogs : selectedOutreachLogs}
+        isOnRoute={Boolean(dashboardFacility && routeStops.some((stop) => stop.facilityId === dashboardFacility.id))}
+        showAddedSuccess={showAddedSuccess}
+        onStartText={onStartText}
+        onLogStatus={onLogStatus}
+        onAddRoute={onAddRoute}
+        onRemoveAddOn={onRemoveAddOn}
+        onPreviewRoute={onPreviewRoute}
+      />
+    </div>
   );
 }
 
@@ -1040,7 +1656,7 @@ function DetailDrawer({
               <div key={log.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                 <p className="font-bold text-slate-900">{friendlyValue(log.status)}</p>
                 <p className="text-slate-500">
-                  {new Date(log.createdAt).toLocaleString()} - {friendlyValue(log.method)}
+                  {formatStableDateTime(log.createdAt)} - {friendlyValue(log.method)}
                 </p>
                 {log.notes ? <p className="mt-1 text-slate-600">{log.notes}</p> : null}
               </div>
@@ -1301,7 +1917,7 @@ function OutreachQueueCard({
           {contact ? `${contact.name}, ${contact.role ?? "SLP"}` : "No known contact"}
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          {latestLog ? `${new Date(latestLog.createdAt).toLocaleTimeString()} - ${friendlyValue(latestLog.status)}` : "No update logged today"}
+          {latestLog ? `${formatStableTime(latestLog.createdAt)} - ${friendlyValue(latestLog.status)}` : "No update logged today"}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {reasonLabels.map((label) => (
@@ -2402,6 +3018,38 @@ export default function NearMyRouteApp() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function exportRouteSummary() {
+    const escapeCsv = (value: string | number | undefined) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = orderedRouteStops.map((stop) => {
+      const facility = facilityById.get(stop.facilityId);
+      const location = stop.privateLocation ?? facility;
+      const status = facility ? todayStatusByFacilityId.get(facility.id) ?? "not_contacted" : undefined;
+      return [
+        stop.order,
+        location?.name ?? "Private route stop",
+        location?.address ?? "",
+        stop.appointmentTime ?? "Time TBD",
+        stop.studyCount ?? 0,
+        stop.status,
+        status ? todayStatusLabel(status) : "Private",
+        stop.routeImpact?.addedDriveMinutes ?? "",
+      ];
+    });
+    const csv = [
+      ["Seq", "Facility", "Address", "Schedule", "Studies", "Route Status", "Outreach Status", "Added Drive Minutes"],
+      ...rows,
+    ]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `near-my-route-summary-${todayIsoDate()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function previewRouteWithAddOn(opportunity: Opportunity) {
     const previewFacilities = routeFacilitiesWithInsertedAddOn(
       routeStops,
@@ -2538,18 +3186,21 @@ export default function NearMyRouteApp() {
 
   return (
     <div className="min-h-screen bg-slate-100 pb-[calc(6rem+env(safe-area-inset-bottom))] text-slate-950 sm:pb-0">
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sm:sticky sm:top-0 sm:z-[500]">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-lg bg-blue-600 text-white">
+      <header className="border-b border-slate-300 bg-white sm:sticky sm:top-0 sm:z-[500]">
+        <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3 px-4 py-3 xl:h-16 xl:px-8 xl:py-0">
+          <div className="flex items-center gap-4 xl:gap-8">
+            <div className="grid h-10 w-10 place-items-center rounded bg-blue-700 text-white">
               <MapPinned size={22} />
             </div>
-            <div>
-              <h1 className="text-xl font-black tracking-tight">Near My Route</h1>
-              <p className="text-xs font-medium text-slate-500">Route-aware MBSS facility opportunities</p>
+            <div className="-ml-2">
+              <h1 className="text-xl font-black uppercase leading-tight tracking-tight text-blue-700 xl:text-lg">Near My Route</h1>
+              <p className="text-xs font-medium text-slate-600 xl:hidden">Route-aware MBSS facility opportunities</p>
+              <p className="hidden text-[11px] font-medium uppercase tracking-wide text-slate-800 xl:block">
+                Administrative logistics portal
+              </p>
             </div>
           </div>
-          <nav className="hidden flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:flex">
+          <nav className="hidden flex-wrap gap-6 self-stretch sm:flex xl:ml-2">
             {(["Near My Route", "Facilities", "Import Schedule", "Outreach"] as AppTab[]).map((tab) => (
               <button
                 key={tab}
@@ -2557,14 +3208,35 @@ export default function NearMyRouteApp() {
                 aria-label={tab}
                 onClick={() => selectTopLevelTab(tab)}
                 className={cx(
-                  "rounded-md px-3 py-2 text-[13px] font-bold transition",
-                  activeTab === tab ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white",
+                  "border-b-2 px-1 text-sm font-semibold transition",
+                  activeTab === tab
+                    ? "border-blue-700 text-blue-700"
+                    : "border-transparent text-slate-700 hover:border-slate-300 hover:text-blue-700",
                 )}
               >
-                {tabLabels[tab]}
+                {tab === "Near My Route"
+                  ? "Route Planning"
+                  : tab === "Facilities"
+                    ? "Facility Master"
+                    : tab === "Import Schedule"
+                      ? "Import"
+                      : "Outreach Logs"}
               </button>
             ))}
           </nav>
+          <div className="ml-auto hidden items-center gap-4 xl:flex">
+            <div className="flex items-center gap-2 border border-slate-300 bg-[#f8f9ff] px-3 py-2 text-sm font-medium text-slate-950">
+              <CalendarDays size={17} />
+              <span>Tomorrow&apos;s Route</span>
+            </div>
+            <div className="h-8 w-px bg-slate-300" />
+            <button type="button" className="p-2 text-slate-700 hover:text-blue-700" aria-label="Notifications">
+              <Bell size={18} />
+            </button>
+            <button type="button" className="p-2 text-slate-700 hover:text-blue-700" aria-label="Settings">
+              <Settings size={18} />
+            </button>
+          </div>
           {showDemoTools ? (
             <details className="hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm sm:block">
               <summary className="cursor-pointer font-bold text-slate-600">Demo tools</summary>
@@ -2630,24 +3302,25 @@ export default function NearMyRouteApp() {
         ) : null}
 
         {routeView.kind === "confirmation" ? (
-          <TentativeAddConfirmation
-            facility={facilityById.get(routeView.facilityId)}
-            routeStops={orderedRouteStops}
-            facilityById={facilityById}
-            snapshot={routeView.snapshot}
-            contactedToday={routeView.contactedToday}
-            canRemove={routeView.canRemove}
-            onBackToRoute={() => openRouteHome(routeView.facilityId)}
-            onRemoveTentative={() => removeTentativeStop(routeView.routeStopId)}
-          />
+          <div className="xl:hidden">
+            <TentativeAddConfirmation
+              facility={facilityById.get(routeView.facilityId)}
+              routeStops={orderedRouteStops}
+              facilityById={facilityById}
+              snapshot={routeView.snapshot}
+              contactedToday={routeView.contactedToday}
+              canRemove={routeView.canRemove}
+              onBackToRoute={() => openRouteHome(routeView.facilityId)}
+              onRemoveTentative={() => removeTentativeStop(routeView.routeStopId)}
+            />
+          </div>
         ) : null}
 
         <main className={cx(
-          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4",
+          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:h-[calc(100vh-4rem)] xl:px-0 xl:py-0",
           routeView.kind === "review" && "hidden xl:flex",
-          routeView.kind === "confirmation" && "hidden",
         )}>
-          <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/5">
+          <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/5 xl:hidden">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Route readiness</p>
@@ -2678,7 +3351,7 @@ export default function NearMyRouteApp() {
               </div>
             </div>
           </section>
-          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[440px_minmax(420px,1fr)_380px] xl:items-start">
+          <div className="grid min-h-0 flex-1 gap-4 xl:hidden">
           <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <BestAddOnCard
               opportunity={featuredOpportunity}
@@ -2999,6 +3672,34 @@ export default function NearMyRouteApp() {
             copyFeedback={selectedFacility ? copyFeedbackByFacilityId[selectedFacility.id] : undefined}
           />
           </div>
+          <DesktopRouteDashboard
+            facilities={facilities}
+            routeStops={orderedRouteStops}
+            opportunities={opportunities}
+            outreachLogs={outreachLogs}
+            selectedFacility={routeView.kind === "confirmation" ? facilityById.get(routeView.facilityId) : selectedFacility}
+            selectedOpportunity={selectedFilteredOpportunity}
+            selectedTodayStatus={selectedTodayStatus}
+            selectedOutreachLogs={selectedOutreachLogs}
+            featuredOpportunity={featuredOpportunity}
+            facilityById={facilityById}
+            todayStatusByFacilityId={todayStatusByFacilityId}
+            todayCounts={todayCounts}
+            routeViewKind={routeView.kind}
+            showAddedSuccess={routeView.kind === "confirmation"}
+            onSelectFacility={selectFacility}
+            onReviewFacility={(facilityId) => openFacilityReview(facilityId)}
+            onExportSummary={exportRouteSummary}
+            onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
+            onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
+            onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
+            onRemoveAddOn={() =>
+              routeView.kind === "confirmation"
+                ? removeTentativeStop(routeView.routeStopId)
+                : selectedFacility && removeTodayAddOn(selectedFacility.id)
+            }
+            onPreviewRoute={() => selectedOpportunity && previewRouteWithAddOn(selectedOpportunity)}
+          />
         </main>
         </>
       ) : null}
@@ -3673,7 +4374,7 @@ export default function NearMyRouteApp() {
                   {outreachLogs.map((log) => (
                     <tr key={log.id}>
                       <td className="px-4 py-3 font-bold text-slate-950">{facilityById.get(log.facilityId)?.name}</td>
-                      <td className="px-4 py-3">{new Date(log.createdAt).toLocaleString()}</td>
+                      <td className="px-4 py-3">{formatStableDateTime(log.createdAt)}</td>
                       <td className="px-4 py-3">{friendlyValue(log.method)}</td>
                       <td className="px-4 py-3">{log.contactName ?? "Unknown"}</td>
                       <td className="px-4 py-3">
