@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
-const baseUrl = process.env.DOGFOOD_ROUTE_URL ?? "http://localhost:3018";
+const baseUrl = process.env.DOGFOOD_ROUTE_URL ?? "http://localhost:3018/?demo=1";
 const storageKey = "near-my-route-state-v1";
 const approvedMessage =
   "Hi! It's Elaine, SLP with Professional Imaging. We'll be doing MBSSs in your area this morning. Do you have anyone appropriate you'd like us to consider adding today?";
@@ -50,7 +50,9 @@ async function checkVisible(page, name) {
   for (let index = 0; index < count; index += 1) {
     const checkbox = checkboxes.nth(index);
     if (await checkbox.isVisible()) {
-      await checkbox.check();
+      await checkbox.evaluate((node) => {
+        if (node instanceof HTMLInputElement && !node.checked) node.click();
+      });
       return;
     }
   }

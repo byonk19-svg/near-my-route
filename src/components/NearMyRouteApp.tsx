@@ -238,6 +238,22 @@ function blockedTextActionLabel(readiness: ReturnType<typeof textReadiness>) {
   return "Text";
 }
 
+function importReviewStatusLabel(row: ImportReviewRow, issue?: string) {
+  if (row.action === "skip") return "Skipped";
+  if (issue) return "Needs review";
+  if (row.action === "private_route_stop") return "Needs location";
+  if (row.action === "create_new") return "Needs confirmation";
+  if (row.action === "use_existing") return "Confirmed";
+  return "Needs review";
+}
+
+function importReviewStatusTone(row: ImportReviewRow, issue?: string): "blue" | "orange" | "green" | "red" | "slate" {
+  if (row.action === "skip") return "slate";
+  if (issue || row.action === "private_route_stop" || row.action === "create_new") return "orange";
+  if (row.action === "use_existing") return "green";
+  return "orange";
+}
+
 function Toggle({
   label,
   checked,
@@ -361,7 +377,7 @@ function BestAddOnCard({
 }) {
   if (!opportunity) {
     return (
-      <section className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
+      <section className="rounded-xl border border-dashed border-slate-300 bg-white p-4 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Best add-on now</p>
         <h2 className="mt-2 text-lg font-black text-slate-950">No route add-ons match these filters</h2>
         <p className="mt-1 text-sm leading-6 text-slate-600">
@@ -375,14 +391,14 @@ function BestAddOnCard({
   }
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
+    <section className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm shadow-blue-950/5">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Best add-on now</p>
-          <h2 className="mt-1 truncate text-xl font-black text-slate-950">{opportunity.facility.name}</h2>
+          <h2 className="mt-1 text-xl font-black leading-tight text-slate-950">{opportunity.facility.name}</h2>
           <p className="mt-2 text-sm font-semibold text-slate-600">{opportunity.bestInsertionLabel}</p>
         </div>
-        <div className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-right">
+        <div className="shrink-0 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-right">
           <p className="text-2xl font-black leading-none text-orange-600">+{opportunity.addedDriveMinutes}</p>
           <p className="mt-1 text-[11px] font-bold uppercase text-orange-700">min detour</p>
         </div>
@@ -397,7 +413,7 @@ function BestAddOnCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button tone="primary" ariaLabel="Review fit" onClick={onReview}>
-          <MessageSquareText size={15} /> See why this fits
+          <MessageSquareText size={15} /> Review fit
         </Button>
         <Button onClick={onPreview}>
           <ExternalLink size={15} /> Preview route
@@ -758,6 +774,7 @@ function DetailDrawer({
   const canContact = todayStatus !== "do_not_contact";
   const readiness = textReadiness(facility);
   const canStartText = readiness === "ready";
+  const textIsBlockedByPhone = copyFeedback === "placeholder_phone" || copyFeedback === "invalid_phone";
   const responseActions =
     todayStatus === "added" || todayStatus === "no_patients_today" || todayStatus === "do_not_contact"
       ? []
@@ -776,7 +793,7 @@ function DetailDrawer({
         ];
 
   return (
-    <aside className={cx("w-full shrink-0 border-t border-slate-200 bg-white p-4 xl:w-[380px] xl:border-l xl:border-t-0", className)}>
+    <aside className={cx("w-full shrink-0 border-t border-slate-200 bg-white p-4 pb-28 xl:w-[380px] xl:border-l xl:border-t-0 xl:pb-4", className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-slate-950">{facility.name}</h2>
@@ -826,6 +843,23 @@ function DetailDrawer({
           Location needs confirmation before route ranking.
         </p>
       ) : null}
+
+      <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[900] mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur xl:hidden">
+        <Button onClick={onOpenRoute}>
+          <ArrowLeft size={15} /> Back to route
+        </Button>
+        {canAddRoute && todayStatus !== "added" ? (
+          <Button tone="primary" onClick={onAddRoute}>
+            <Plus size={15} /> Add to route
+          </Button>
+        ) : opportunity ? (
+          <Button onClick={onPreviewRoute}>
+            <ExternalLink size={15} /> Preview route
+          </Button>
+        ) : (
+          <Button disabled>Route fit unavailable</Button>
+        )}
+      </div>
 
       <section className="mt-5">
         <h3 className="text-sm font-black text-slate-900">Contacts</h3>
@@ -985,10 +1019,12 @@ function DetailDrawer({
               Clipboard was blocked. The message is visible above so you can copy it manually.
             </p>
           ) : null}
-          <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
-            <Clipboard size={15} /> Copy message
-          </Button>
-          {copyFeedback !== "placeholder_phone" && copyFeedback !== "invalid_phone" ? (
+          {!textIsBlockedByPhone ? (
+            <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
+              <Clipboard size={15} /> Copy message
+            </Button>
+          ) : null}
+          {!textIsBlockedByPhone ? (
             <Button className="mt-2 w-full" onClick={onMarkTexted}>
               <Check size={15} /> Mark texted
             </Button>
@@ -1647,6 +1683,8 @@ function ImportReviewCards({
         const matchName = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : undefined;
         const confidenceTone = row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate";
         const issue = importRowBlockingReason(row);
+        const statusTone = importReviewStatusTone(row, issue);
+        const statusLabel = importReviewStatusLabel(row, issue);
         const isExpanded = Boolean(expandedRowIds[row.id]);
         const canCollapseMatch = canCollapseImportRow(row, issue);
         const showControls = !canCollapseMatch || isExpanded;
@@ -1658,7 +1696,9 @@ function ImportReviewCards({
             className={cx(
               "rounded-lg border bg-white p-3 shadow-sm",
               row.action === "skip" ? "border-slate-200 opacity-70" : "border-slate-200",
-              issue && row.action !== "skip" && "border-orange-300",
+              (issue || row.action === "private_route_stop" || row.action === "create_new") &&
+                row.action !== "skip" &&
+                "border-orange-300 bg-orange-50/40",
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1670,7 +1710,10 @@ function ImportReviewCards({
                 </p>
                 {row.reviewNote ? <p className="mt-1 text-xs font-semibold text-blue-700">{row.reviewNote}</p> : null}
               </div>
-              <Badge tone={confidenceTone}>{row.confidence}% match</Badge>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <Badge tone={statusTone}>{statusLabel}</Badge>
+                <Badge tone={confidenceTone}>{row.confidence}% match</Badge>
+              </div>
             </div>
             {canCollapseMatch ? (
               <div className="mt-3">
@@ -1975,7 +2018,13 @@ export default function NearMyRouteApp() {
   const routeReadinessTitle = routeNeedsLocationReview
     ? "Tomorrow's route needs location review"
     : `Tomorrow's route ready`;
-  const routeReadinessSummary = `${orderedRouteStops.length} ${orderedRouteStops.length === 1 ? "stop" : "stops"} - ${routeNeedsLocationReview ? `${currentRouteUnconfirmedFacilities.length} need review` : "locations confirmed"} - ${opportunities.length} add-on candidates`;
+  const routeTextReadyCount = orderedRouteStops
+    .map((stop) => facilityById.get(stop.facilityId))
+    .filter((facility): facility is Facility => {
+      if (!facility) return false;
+      return textReadiness(facility) === "ready";
+    }).length;
+  const routeReadinessSummary = `${orderedRouteStops.length} ${orderedRouteStops.length === 1 ? "stop" : "stops"} imported - ${routeNeedsLocationReview ? `${currentRouteUnconfirmedFacilities.length} ${currentRouteUnconfirmedFacilities.length === 1 ? "location" : "locations"} need confirm` : "locations confirmed"} - ${routeTextReadyCount} text-ready ${routeTextReadyCount === 1 ? "facility" : "facilities"}`;
 
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);
@@ -2598,18 +2647,18 @@ export default function NearMyRouteApp() {
           routeView.kind === "review" && "hidden xl:flex",
           routeView.kind === "confirmation" && "hidden",
         )}>
-          <section className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+          <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/5">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Route readiness</p>
-                <h2 className="mt-1 text-lg font-black text-slate-950">{routeReadinessTitle}</h2>
+                <h2 className="mt-1 text-xl font-black leading-tight text-slate-950">{routeReadinessTitle}</h2>
                 <p className="mt-1 text-sm font-semibold text-slate-600">{routeReadinessSummary}</p>
               </div>
               <div className="grid gap-2 sm:grid-cols-3 lg:flex">
                 {routeNeedsLocationReview ? (
                   <>
                     <Button tone="primary" onClick={() => openRouteHome(currentRouteUnconfirmedFacilities[0]?.id ?? selectedFacilityId)}>
-                      Review unconfirmed locations
+                      Review one location
                     </Button>
                     <Button disabled ariaLabel="Confirm locations for Maps">
                       <ExternalLink size={15} /> Open in Google Maps
@@ -3264,16 +3313,16 @@ export default function NearMyRouteApp() {
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                <p className="text-lg font-black text-slate-950">{importSummary.useExisting}</p>
-                <p className="text-[11px] font-bold uppercase text-slate-500">Existing</p>
+                <p className="text-lg font-black text-green-700">{importSummary.confirmed}</p>
+                <p className="text-[11px] font-bold uppercase text-slate-500">Confirmed</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                <p className="text-lg font-black text-slate-950">{importSummary.createNew}</p>
-                <p className="text-[11px] font-bold uppercase text-slate-500">New</p>
+                <p className="text-lg font-black text-slate-950">{importSummary.useExisting}</p>
+                <p className="text-[11px] font-bold uppercase text-slate-500">Matched</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.privateRouteStop}</p>
-                <p className="text-[11px] font-bold uppercase text-slate-500">Private/non-facility</p>
+                <p className="text-[11px] font-bold uppercase text-slate-500">Needs location</p>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <p className="text-lg font-black text-slate-950">{importSummary.skipped}</p>
@@ -3284,6 +3333,13 @@ export default function NearMyRouteApp() {
                 <p className="text-[11px] font-bold uppercase text-orange-700">Unresolved</p>
               </div>
             </div>
+            {reviewRows.length > 0 ? (
+              <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                {importSummary.unresolved > 0
+                  ? `${importSummary.confirmed} confirmed. Resolve ${importSummary.unresolved} before route ranking.`
+                  : `${importSummary.confirmed} confirmed and ready for route review.`}
+              </p>
+            ) : null}
             {importSummary.unresolved > 0 ? (
               <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-800">
                 Resolve uncertain rows before confirming. Confirm is blocked until you keep a match, create a real facility, mark as a private route stop, or skip the row.
