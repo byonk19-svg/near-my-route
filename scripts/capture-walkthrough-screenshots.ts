@@ -251,13 +251,13 @@ async function runWalkthrough(
     ]);
 
     const lisaPhone = await firstVisible(page.getByLabel("Phone for Lisa"), "Lisa phone field");
-    await lisaPhone.fill("713-867-5309");
+    await lisaPhone.fill("000-000-0101");
     await waitForStoredState(
       page,
       (state) =>
         state.facilities
           ?.find((facility) => facility.id === "encompass-westchase")
-          ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "713-867-5309",
+          ?.contacts.find((contact) => contact.id === "c-encompass-lisa")?.phone === "000-000-0101",
       "synthetic non-placeholder phone saved",
     );
     await clickVisible(textFirst, "Text");
@@ -271,7 +271,7 @@ async function runWalkthrough(
     await clickVisible(page, "Possible add-on");
     await page.getByRole("button", { name: "Add to route" }).first().waitFor();
     await capture(page, outputDir, manifestPrefix, "11-possible-addon.png", "Near My Route / Facility review", `${deviceLabel} possible add-on state after explicit Texted and response logging.`, [
-      "The phone value is synthetic and invalid for real-world assignment.",
+      "The phone value is an isolated non-routable test value for screenshot state only.",
       "This state is created only inside the local browser context for walkthrough screenshots.",
     ]);
 
