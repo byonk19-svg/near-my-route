@@ -185,7 +185,7 @@ try {
   assert.equal(await page.getByText("Private route stop 3").count(), 0);
 
   await clickVisible(page, "Near My Route");
-  const queue = page.getByTestId("location-confirmation-queue");
+  const queue = await firstVisible(page.getByTestId("location-confirmation-queue"), "location confirmation queue");
   await queue.getByText("Private route stop 3").waitFor();
   await queue.getByLabel("Latitude for Private route stop 3").fill("29.7066");
   await queue.getByLabel("Longitude for Private route stop 3").fill("-95.5492");

@@ -80,7 +80,7 @@ try {
   assert.equal(await blockedMapsButton.isDisabled(), true);
   await page.getByText("No route add-ons match these filters").first().waitFor();
 
-  const queue = page.getByTestId("location-confirmation-queue");
+  const queue = await firstVisible(page.getByTestId("location-confirmation-queue"), "location confirmation queue");
   await queue.getByText("Cypress Care").waitFor();
   await queue
     .getByText("These are placeholder Houston coordinates. Open the address in Google Maps, then replace latitude and longitude before confirming.")
