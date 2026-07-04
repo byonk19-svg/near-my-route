@@ -2200,6 +2200,12 @@ export default function NearMyRouteApp() {
   }
 
   function parseImportSchedule() {
+    const showImportReview = () => {
+      window.setTimeout(() => {
+        document.getElementById("import-review-section")?.scrollIntoView({ block: "start", behavior: "auto" });
+      }, 0);
+    };
+
     if (importMode === "van_packet") {
       const result = parseVanPacketText(scheduleText, facilities, { supplementalText: vanPacketPdfText });
       setVanPacketSummary(result.summary);
@@ -2207,12 +2213,14 @@ export default function NearMyRouteApp() {
       setExpandedImportRowIds({});
       setScheduleText("");
       setVanPacketPdfText("");
+      showImportReview();
       return;
     }
 
     setVanPacketSummary(undefined);
     setReviewRows(parseScheduleText(scheduleText, facilities));
     setExpandedImportRowIds({});
+    showImportReview();
   }
 
   function toggleImportRowExpansion(rowId: string) {
@@ -3233,7 +3241,7 @@ export default function NearMyRouteApp() {
             ) : null}
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section id="import-review-section" className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step 2</p>

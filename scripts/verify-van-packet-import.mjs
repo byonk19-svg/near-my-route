@@ -78,12 +78,33 @@ async function waitForStoredState(page, predicate, label) {
   throw new Error(`Timed out waiting for stored state: ${label}`);
 }
 
+async function isInViewport(locator, page) {
+  const box = await locator.boundingBox();
+  const viewport = page.viewportSize();
+  return Boolean(box && viewport && box.y >= 0 && box.y + box.height <= viewport.height);
+}
+
 const browser = await chromium.launch();
 try {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload({ waitUntil: "networkidle" });
+  await waitForStoredState(page, (state) => Array.isArray(state.facilities), "hydrated defaults");
+
+  await clickVisible(page, "Import route");
+  await clickVisible(page, "Van Packet");
+  await clickVisible(page, "Parse Van Packet");
+  const sampleReviewHeading = page.getByRole("heading", { name: "Review imported stops" });
+  await sampleReviewHeading.waitFor();
+  assert.equal(
+    await isInViewport(sampleReviewHeading, page),
+    true,
+    "parsing the sample Van Packet should move the user to the Step 2 review section",
+  );
+
   await page.evaluate(() => window.localStorage.clear());
   await page.reload({ waitUntil: "networkidle" });
   await waitForStoredState(page, (state) => Array.isArray(state.facilities), "hydrated defaults");
@@ -98,6 +119,11 @@ try {
 
   const summary = page.getByTestId("van-packet-summary");
   await summary.getByText("Northwest Van").waitFor();
+  assert.equal(
+    await isInViewport(page.getByRole("heading", { name: "Review imported stops" }), page),
+    true,
+    "parsing a Van Packet should move the user to the Step 2 review section",
+  );
   await summary.getByText("Map stops: 6").waitFor();
   await summary.getByText("Private stop hints: 1").waitFor();
   await summary.getByText("Route start/end: 2 skipped").waitFor();
