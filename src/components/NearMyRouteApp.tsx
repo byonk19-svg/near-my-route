@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -565,14 +565,18 @@ function DesktopRouteOverviewPanel({
   opportunities,
   outreachLogs,
   todayCounts,
+  isCurrentRouteMapsBlocked,
   onExportSummary,
+  onOpenCurrentRoute,
 }: {
   facilities: Facility[];
   routeStops: RouteStop[];
   opportunities: Opportunity[];
   outreachLogs: OutreachLog[];
   todayCounts: Array<{ status: TodayStatus; label: string; count: number }>;
+  isCurrentRouteMapsBlocked: boolean;
   onExportSummary: () => void;
+  onOpenCurrentRoute: () => void;
 }) {
   const orderedStops = [...routeStops].sort((a, b) => a.order - b.order);
   const activeStopCount = orderedStops.length;
@@ -654,6 +658,13 @@ function DesktopRouteOverviewPanel({
           </div>
         </div>
         <div className="mt-10 grid gap-2">
+          <Button
+            disabled={isCurrentRouteMapsBlocked}
+            ariaLabel={isCurrentRouteMapsBlocked ? "Confirm locations for Maps" : "Open in Google Maps"}
+            onClick={onOpenCurrentRoute}
+          >
+            <ExternalLink size={15} /> {isCurrentRouteMapsBlocked ? "Confirm locations for Maps" : "Open in Google Maps"}
+          </Button>
           <Button onClick={onExportSummary}>
             <Download size={15} /> Export Summary
           </Button>
@@ -673,6 +684,7 @@ function DesktopRouteTable({
   selectedFacilityId,
   todayStatusByFacilityId,
   routeViewKind,
+  locationReview,
   onSelectFacility,
   onReviewFacility,
 }: {
@@ -682,6 +694,7 @@ function DesktopRouteTable({
   selectedFacilityId?: string;
   todayStatusByFacilityId: Map<string, TodayStatus>;
   routeViewKind: RouteView["kind"];
+  locationReview?: ReactNode;
   onSelectFacility: (facilityId: string) => void;
   onReviewFacility: (facilityId: string) => void;
 }) {
@@ -708,6 +721,7 @@ function DesktopRouteTable({
             <option>Sort by: Detour Time</option>
           </select>
         </div>
+        {locationReview ? <div className="mb-6">{locationReview}</div> : null}
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-300 text-[12px] uppercase tracking-[0.12em] text-slate-700">
@@ -838,7 +852,12 @@ function DesktopCandidatePanel({
   outreachLogs,
   isOnRoute,
   showAddedSuccess,
+  showMessage,
+  copyFeedback,
+  onCloseMessage,
   onStartText,
+  onCopyMessage,
+  onMarkTexted,
   onLogStatus,
   onAddRoute,
   onRemoveAddOn,
@@ -850,7 +869,12 @@ function DesktopCandidatePanel({
   outreachLogs: OutreachLog[];
   isOnRoute: boolean;
   showAddedSuccess: boolean;
+  showMessage: boolean;
+  copyFeedback?: TextFeedback;
+  onCloseMessage: () => void;
   onStartText: () => void;
+  onCopyMessage: () => void;
+  onMarkTexted: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
   onAddRoute: () => void;
   onRemoveAddOn: () => void;
@@ -882,6 +906,7 @@ function DesktopCandidatePanel({
     : isOnRoute
       ? "This facility is already part of tomorrow's route."
       : "No route fit is currently available.";
+  const textIsBlockedByPhone = copyFeedback === "placeholder_phone" || copyFeedback === "invalid_phone";
 
   return (
     <aside className="hidden min-h-0 w-[30rem] overflow-y-auto bg-[#f8f9ff] xl:block">
@@ -975,6 +1000,11 @@ function DesktopCandidatePanel({
           <Button onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
             Negative Log
           </Button>
+          {opportunity && todayStatus !== "added" && todayStatus !== "no_patients_today" && todayStatus !== "do_not_contact" ? (
+            <Button tone="primary" ariaLabel="Possible add-on" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
+              Mark possible add-on
+            </Button>
+          ) : null}
         </div>
         {todayStatus === "possible_add_on" && opportunity ? (
           <Button className="w-full" tone="primary" onClick={onAddRoute}>
@@ -994,6 +1024,67 @@ function DesktopCandidatePanel({
             Remove from Recommendations
           </Button>
         )}
+        {showMessage ? (
+          <section className="border border-blue-200 bg-blue-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-black text-blue-950">Safe outreach template</h3>
+              <Button tone="ghost" onClick={onCloseMessage}>Close</Button>
+            </div>
+            <textarea
+              readOnly
+              value={safeMessage()}
+              className="mt-2 min-h-36 w-full resize-none rounded-md border border-blue-200 bg-white p-3 text-sm leading-6 text-slate-800"
+            />
+            <p className="mt-2 text-xs font-medium text-blue-800">
+              Facility-level only. No patient names or clinical details.
+            </p>
+            {copyFeedback === "opened" ? (
+              <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
+                Template copied and Messages opened. Return here after sending, then mark this facility texted.
+              </p>
+            ) : null}
+            {copyFeedback === "copied" ? (
+              <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-800">
+                Template copied.
+              </p>
+            ) : null}
+            {copyFeedback === "fallback_copied" ? (
+              <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                Template copied. Open Messages on your phone, then mark this facility texted.
+              </p>
+            ) : null}
+            {copyFeedback === "no_phone" ? (
+              <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                No phone number is saved. Use the visible template manually, then mark this facility texted.
+              </p>
+            ) : null}
+            {copyFeedback === "placeholder_phone" ? (
+              <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                This contact still has a placeholder 555 number. Edit the phone number before opening Messages.
+              </p>
+            ) : null}
+            {copyFeedback === "invalid_phone" ? (
+              <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                This contact does not have a dialable phone number. Enter a real phone number before opening Messages.
+              </p>
+            ) : null}
+            {copyFeedback === "failed" ? (
+              <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
+                Clipboard was blocked. The message is visible above so you can copy it manually.
+              </p>
+            ) : null}
+            {!textIsBlockedByPhone ? (
+              <Button tone="primary" className="mt-3 w-full" onClick={onCopyMessage}>
+                <Clipboard size={15} /> Copy message
+              </Button>
+            ) : null}
+            {!textIsBlockedByPhone ? (
+              <Button className="mt-2 w-full" onClick={onMarkTexted}>
+                <Check size={15} /> Mark texted
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
         {lastLog ? (
           <p className="border-t border-slate-300 pt-4 text-xs font-medium text-slate-600">
             Last outreach event: {todayStatusLabel(todayStatus ?? "not_contacted")} at {formatStableTime(lastLog.createdAt)}
@@ -1019,10 +1110,18 @@ function DesktopRouteDashboard({
   todayCounts,
   routeViewKind,
   showAddedSuccess,
+  locationReview,
+  isCurrentRouteMapsBlocked,
+  showMessage,
+  copyFeedback,
   onSelectFacility,
   onReviewFacility,
   onExportSummary,
+  onOpenCurrentRoute,
+  onCloseMessage,
   onStartText,
+  onCopyMessage,
+  onMarkTexted,
   onLogStatus,
   onAddRoute,
   onRemoveAddOn,
@@ -1042,10 +1141,18 @@ function DesktopRouteDashboard({
   todayCounts: Array<{ status: TodayStatus; label: string; count: number }>;
   routeViewKind: RouteView["kind"];
   showAddedSuccess: boolean;
+  locationReview?: ReactNode;
+  isCurrentRouteMapsBlocked: boolean;
+  showMessage: boolean;
+  copyFeedback?: TextFeedback;
   onSelectFacility: (facilityId: string) => void;
   onReviewFacility: (facilityId: string) => void;
   onExportSummary: () => void;
+  onOpenCurrentRoute: () => void;
+  onCloseMessage: () => void;
   onStartText: () => void;
+  onCopyMessage: () => void;
+  onMarkTexted: () => void;
   onLogStatus: (status: OutreachStatus, notes: string) => void;
   onAddRoute: () => void;
   onRemoveAddOn: () => void;
@@ -1076,7 +1183,9 @@ function DesktopRouteDashboard({
         opportunities={opportunities}
         outreachLogs={outreachLogs}
         todayCounts={todayCounts}
+        isCurrentRouteMapsBlocked={isCurrentRouteMapsBlocked}
         onExportSummary={onExportSummary}
+        onOpenCurrentRoute={onOpenCurrentRoute}
       />
       <DesktopRouteTable
         routeStops={routeStops}
@@ -1085,6 +1194,7 @@ function DesktopRouteDashboard({
         selectedFacilityId={dashboardFacility?.id}
         todayStatusByFacilityId={todayStatusByFacilityId}
         routeViewKind={routeViewKind}
+        locationReview={locationReview}
         onSelectFacility={onSelectFacility}
         onReviewFacility={onReviewFacility}
       />
@@ -1095,7 +1205,12 @@ function DesktopRouteDashboard({
         outreachLogs={dashboardOutreachLogs.length > 0 ? dashboardOutreachLogs : selectedOutreachLogs}
         isOnRoute={Boolean(dashboardFacility && routeStops.some((stop) => stop.facilityId === dashboardFacility.id))}
         showAddedSuccess={showAddedSuccess}
+        showMessage={showMessage}
+        copyFeedback={dashboardFacility ? copyFeedback : undefined}
+        onCloseMessage={onCloseMessage}
         onStartText={onStartText}
+        onCopyMessage={onCopyMessage}
+        onMarkTexted={onMarkTexted}
         onLogStatus={onLogStatus}
         onAddRoute={onAddRoute}
         onRemoveAddOn={onRemoveAddOn}
@@ -3687,10 +3802,31 @@ export default function NearMyRouteApp() {
             todayCounts={todayCounts}
             routeViewKind={routeView.kind}
             showAddedSuccess={routeView.kind === "confirmation"}
+            locationReview={
+              <LocationConfirmationQueue
+                facilities={facilities}
+                routeStops={orderedRouteStops}
+                routeFacilityIds={currentRouteFacilityIds}
+                onConfirm={confirmFacilityLocation}
+              />
+            }
+            isCurrentRouteMapsBlocked={isCurrentRouteMapsBlocked}
+            showMessage={showMessage}
+            copyFeedback={
+              routeView.kind === "confirmation"
+                ? copyFeedbackByFacilityId[routeView.facilityId]
+                : selectedFacility
+                  ? copyFeedbackByFacilityId[selectedFacility.id]
+                  : undefined
+            }
             onSelectFacility={selectFacility}
             onReviewFacility={(facilityId) => openFacilityReview(facilityId)}
             onExportSummary={exportRouteSummary}
+            onOpenCurrentRoute={() => openMapsUrl(currentRouteMapsUrl)}
+            onCloseMessage={() => setShowMessage(false)}
             onStartText={() => selectedFacility && void startTextFlow(selectedFacility.id)}
+            onCopyMessage={() => selectedFacility && void copySafeMessage(selectedFacility.id)}
+            onMarkTexted={() => selectedFacility && markTexted(selectedFacility.id)}
             onLogStatus={(status, notes) => selectedFacility && logTodayResponse(selectedFacility.id, status, notes)}
             onAddRoute={() => selectedFacility && addTentatively(selectedFacility.id)}
             onRemoveAddOn={() =>
