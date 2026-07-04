@@ -22,6 +22,19 @@ async function clickVisible(pageOrLocator, name) {
   throw new Error(`No visible button named ${String(name)}`);
 }
 
+async function clickVisibleTab(page, name) {
+  const buttons = page.getByRole("button", { name });
+  const count = await buttons.count();
+  for (let index = 0; index < count; index += 1) {
+    const button = buttons.nth(index);
+    if (await button.isVisible()) {
+      await button.evaluate((node) => node.click());
+      return;
+    }
+  }
+  throw new Error(`No visible tab named ${String(name)}`);
+}
+
 async function firstVisible(locator, label) {
   const count = await locator.count();
   for (let index = 0; index < count; index += 1) {
@@ -102,7 +115,7 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await waitForStoredState(page, (state) => Array.isArray(state.routeStops), "hydrated defaults");
 
-  await clickVisible(page, "Import Schedule");
+  await clickVisible(page, "Import route");
   await page.locator("textarea").first().fill(routeText);
   await clickVisible(page, "Parse Schedule");
   await page.getByTestId("import-review-card-1").waitFor();
@@ -121,7 +134,7 @@ try {
     ["memorial-snf", "park-manor-westchase", "lakeside-rehab"],
   );
 
-  await clickVisible(page, "Outreach");
+  await clickVisibleTab(page, "Outreach");
   const textFirst = await firstVisible(page.getByTestId("text-first-card"), "Text First card");
   await textFirst.getByRole("heading", { name: "Encompass Rehab Westchase" }).waitFor();
   await textFirst.getByText("+3 min detour").waitFor();
@@ -297,7 +310,7 @@ try {
   );
   assert.equal(state.dogfoodNotes, "", "legacy PHI-like dogfood notes should be removed from persisted state");
 
-  await clickVisible(page, "Facilities");
+  await clickVisibleTab(page, "Facilities");
   await page.getByPlaceholder("Search by name or address").fill("Northwest");
   await page.getByRole("heading", { name: "Northwest Care Center" }).waitFor();
   await clickVisible(page, "Review fit");

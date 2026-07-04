@@ -367,7 +367,7 @@ function BestAddOnCard({
         <p className="mt-1 text-sm leading-6 text-slate-600">
           Adjust the detour or contact filters, or import tomorrow&apos;s schedule before reviewing candidates.
         </p>
-        <Button className="mt-3 w-full" ariaLabel="Import Schedule" onClick={onImport}>
+        <Button className="mt-3 w-full" ariaLabel="Import route" onClick={onImport}>
           <Clipboard size={15} /> Import route
         </Button>
       </section>
@@ -2521,7 +2521,7 @@ export default function NearMyRouteApp() {
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-[500] border-t border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-[1000] border-t border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
         <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
           {(["Near My Route", "Import Schedule", "Outreach", "Facilities"] as AppTab[]).map((tab) => (
             <button
@@ -2586,7 +2586,7 @@ export default function NearMyRouteApp() {
         ) : null}
 
         <main className={cx(
-          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:h-[calc(100vh-74px)]",
+          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4",
           routeView.kind === "review" && "hidden xl:flex",
           routeView.kind === "confirmation" && "hidden",
         )}>
@@ -2612,7 +2612,7 @@ export default function NearMyRouteApp() {
                     <ExternalLink size={15} /> Open in Google Maps
                   </Button>
                 )}
-                <Button ariaLabel="Import Schedule" onClick={() => selectTopLevelTab("Import Schedule")}>
+                <Button ariaLabel="Import route" onClick={() => selectTopLevelTab("Import Schedule")}>
                   <Clipboard size={15} /> Import route
                 </Button>
                 <Button onClick={() => featuredOpportunity && openFacilityReview(featuredOpportunity.facility.id)} disabled={!featuredOpportunity}>
@@ -2621,8 +2621,8 @@ export default function NearMyRouteApp() {
               </div>
             </div>
           </section>
-          <div className="flex min-h-0 flex-1 flex-col gap-0 xl:flex-row">
-          <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 xl:w-[440px] xl:overflow-y-auto xl:rounded-l-xl xl:rounded-r-none">
+          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[440px_minmax(420px,1fr)_380px] xl:items-start">
+          <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <BestAddOnCard
               opportunity={featuredOpportunity}
               todayStatus={
@@ -2908,7 +2908,7 @@ export default function NearMyRouteApp() {
             </div>
           </section>
 
-          <section className="relative hidden min-h-[560px] flex-1 overflow-hidden border-x border-slate-200 bg-white xl:block xl:min-h-0">
+          <section className="relative hidden min-h-[560px] overflow-hidden rounded-xl border border-slate-200 bg-white xl:sticky xl:top-24 xl:block xl:h-[calc(100vh-7rem)]">
             <RouteMap
               facilities={facilities}
               routeStops={routeStops}
@@ -2920,7 +2920,7 @@ export default function NearMyRouteApp() {
           </section>
 
           <DetailDrawer
-            className="hidden xl:block"
+            className="hidden xl:sticky xl:top-24 xl:block xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:rounded-xl xl:border xl:border-slate-200"
             facility={selectedFacility}
             opportunity={selectedFilteredOpportunity}
             todayStatus={selectedTodayStatus}
