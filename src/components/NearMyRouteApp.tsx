@@ -193,11 +193,11 @@ function Button({
       onClick={onClick}
       disabled={disabled}
       className={cx(
-        "inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 py-2 text-center text-[13px] font-semibold leading-tight transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1",
-        tone === "primary" && "bg-blue-600 text-white hover:bg-blue-700",
-        tone === "secondary" && "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-        tone === "ghost" && "text-slate-600 hover:bg-slate-100",
-        tone === "danger" && "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+        "group inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-2 text-center text-[13px] font-bold leading-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 [&>svg]:shrink-0 [&>svg]:transition-transform [&>svg]:duration-500 [&>svg]:ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:[&>svg]:translate-x-0.5",
+        tone === "primary" && "bg-blue-700 text-white shadow-[0_14px_32px_rgba(37,99,235,0.24),inset_0_1px_0_rgba(255,255,255,0.24)] hover:bg-blue-800",
+        tone === "secondary" && "nmr-soft-field text-slate-800 hover:border-blue-200 hover:bg-white",
+        tone === "ghost" && "text-slate-600 hover:bg-white/70 hover:text-blue-700",
+        tone === "danger" && "border border-red-200 bg-red-50 text-red-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] hover:bg-red-100",
         disabled && "pointer-events-none cursor-not-allowed opacity-50",
         className,
       )}
@@ -211,12 +211,12 @@ function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?:
   return (
     <span
       className={cx(
-        "inline-flex whitespace-nowrap items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+        "inline-flex whitespace-nowrap items-center rounded-full border px-2.5 py-1 text-[11px] font-bold leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]",
         tone === "blue" && "border-blue-200 bg-blue-50 text-blue-700",
-        tone === "orange" && "border-orange-200 bg-orange-50 text-orange-700",
-        tone === "green" && "border-green-200 bg-green-50 text-green-700",
+        tone === "orange" && "border-amber-200 bg-amber-50 text-amber-800",
+        tone === "green" && "border-emerald-200 bg-emerald-50 text-emerald-700",
         tone === "red" && "border-red-200 bg-red-50 text-red-700",
-        tone === "slate" && "border-slate-200 bg-slate-50 text-slate-600",
+        tone === "slate" && "border-slate-200 bg-white text-slate-600",
       )}
     >
       {children}
@@ -265,19 +265,19 @@ function DashboardMetric({
   return (
     <div
       className={cx(
-        "border border-slate-300 bg-white p-3",
-        tone === "blue" && "border-blue-700 bg-blue-50/30",
-        tone === "green" && "border-green-200",
-        tone === "red" && "border-red-200 bg-red-50/40",
+        "nmr-panel rounded-2xl p-3",
+        tone === "blue" && "border-blue-200 bg-blue-50/50",
+        tone === "green" && "border-emerald-200 bg-emerald-50/40",
+        tone === "red" && "border-amber-200 bg-amber-50/50",
       )}
     >
-      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
       <p
         className={cx(
-          "mt-2 text-xl font-bold tracking-tight text-slate-950",
+          "mt-2 text-xl font-black tracking-tight text-slate-950",
           tone === "blue" && "text-blue-700",
-          tone === "green" && "text-green-700",
-          tone === "red" && "text-red-700",
+          tone === "green" && "text-emerald-700",
+          tone === "red" && "text-amber-700",
         )}
       >
         {value}
@@ -372,21 +372,21 @@ function OpportunityCard({
   return (
     <article
       className={cx(
-        "rounded-lg border bg-white p-3 shadow-sm transition",
-        selected ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-slate-300",
-        opportunity.group === "Not Worth It Today" && "bg-slate-50 opacity-80",
+        "nmr-panel rounded-3xl p-3 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+        selected ? "border-blue-300 ring-4 ring-blue-100" : "hover:border-blue-200 hover:-translate-y-0.5",
+        opportunity.group === "Not Worth It Today" && "bg-slate-50/80 opacity-80",
       )}
     >
       <button type="button" onClick={onSelect} className="block w-full text-left">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-600 text-[11px] font-black text-white">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-950 text-[11px] font-black text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]">
                 {rank}
               </span>
               <h3 className="truncate text-sm font-bold text-slate-950">{opportunity.facility.name}</h3>
             </div>
-            <p className="mt-2 text-2xl font-black tracking-tight text-orange-600">
+            <p className="mt-2 text-2xl font-black tracking-tight text-amber-600">
               +{opportunity.addedDriveMinutes} min off route
             </p>
           </div>
@@ -447,8 +447,8 @@ function BestAddOnCard({
 }) {
   if (!opportunity) {
     return (
-      <section className="rounded-xl border border-dashed border-slate-300 bg-white p-4 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Best add-on now</p>
+      <section className="nmr-panel rounded-3xl border-dashed p-5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Best add-on now</p>
         <h2 className="mt-2 text-lg font-black text-slate-950">No route add-ons match these filters</h2>
         <p className="mt-1 text-sm leading-6 text-slate-600">
           Adjust the detour or contact filters, or import tomorrow&apos;s schedule before reviewing candidates.
@@ -461,16 +461,17 @@ function BestAddOnCard({
   }
 
   return (
-    <section className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm shadow-blue-950/5">
+    <section className="nmr-surface overflow-hidden rounded-[1.75rem] p-1.5">
+      <div className="rounded-[1.35rem] bg-white/92 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Best add-on now</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Best add-on now</p>
           <h2 className="mt-1 text-xl font-black leading-tight text-slate-950">{opportunity.facility.name}</h2>
           <p className="mt-2 text-sm font-semibold text-slate-600">{opportunity.bestInsertionLabel}</p>
         </div>
-        <div className="shrink-0 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-right">
-          <p className="text-2xl font-black leading-none text-orange-600">+{opportunity.addedDriveMinutes}</p>
-          <p className="mt-1 text-[11px] font-bold uppercase text-orange-700">min detour</p>
+        <div className="shrink-0 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <p className="text-2xl font-black leading-none text-amber-600">+{opportunity.addedDriveMinutes}</p>
+          <p className="mt-1 text-[11px] font-bold uppercase text-amber-700">min detour</p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -488,6 +489,7 @@ function BestAddOnCard({
         <Button onClick={onPreview}>
           <ExternalLink size={15} /> Preview route
         </Button>
+      </div>
       </div>
     </section>
   );
@@ -519,7 +521,7 @@ function LocationConfirmationQueue({
   if (pendingLocations.length === 0) return null;
 
   return (
-    <section data-testid="location-confirmation-queue" className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+    <section data-testid="location-confirmation-queue" className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700">Location review</p>
@@ -535,10 +537,10 @@ function LocationConfirmationQueue({
               type="button"
               onClick={() => setActiveLocationId(location.id)}
               className={cx(
-                "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs font-bold",
+                "flex items-center justify-between rounded-2xl border px-3 py-2 text-left text-xs font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
                 activeLocation.location.id === location.id
-                  ? "border-orange-300 bg-white text-orange-800"
-                  : "border-orange-200 bg-orange-100/60 text-orange-700",
+                  ? "border-amber-300 bg-white text-amber-800 shadow-[0_10px_24px_rgba(180,83,9,0.1)]"
+                  : "border-amber-200 bg-amber-100/60 text-amber-700",
               )}
             >
               <span className="truncate">{index + 1}. {location.name}</span>
@@ -589,10 +591,11 @@ function DesktopRouteOverviewPanel({
   const notContactedCount = statusCount(todayCounts, "not_contacted");
 
   return (
-    <aside className="hidden min-h-0 border-r border-slate-300 bg-white xl:flex xl:w-80 xl:flex-col xl:overflow-y-auto">
-      <div className="border-b border-slate-300 p-5">
+    <aside className="hidden min-h-0 border-r border-slate-200 bg-white/70 xl:flex xl:w-80 xl:flex-col xl:overflow-y-auto">
+      <div className="p-5">
         <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">Route overview</h2>
-        <div className="relative mb-4 h-48 overflow-hidden rounded border border-slate-300 bg-[#e5eeff] shadow-inner">
+        <div className="nmr-surface relative mb-4 h-48 overflow-hidden rounded-[1.5rem] p-1">
+          <div className="h-full overflow-hidden rounded-[1.15rem] bg-[#e5eeff]">
           <RouteMap
             facilities={facilities}
             routeStops={routeStops}
@@ -601,7 +604,8 @@ function DesktopRouteOverviewPanel({
             selectedFacilityId={opportunities[0]?.facility.id}
             onSelectFacility={() => undefined}
           />
-          <div className="absolute left-3 top-3 rounded bg-blue-700 px-3 py-1 text-[11px] font-bold text-white shadow-sm">
+          </div>
+          <div className="absolute left-4 top-4 rounded-full bg-slate-950 px-3 py-1 text-[11px] font-bold text-white shadow-[0_12px_26px_rgba(15,23,42,0.22)]">
             {activeStopCount} Active Stops
           </div>
         </div>
@@ -613,11 +617,11 @@ function DesktopRouteOverviewPanel({
           />
           <DashboardMetric label="Studies" value={`${studyCount} ${studyCount === 1 ? "Study" : "Studies"}`} />
         </div>
-        <div className="mt-5 border-t border-slate-300 pt-4">
+        <div className="mt-5 border-t border-slate-200 pt-4">
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">
             Projected day impact
           </h3>
-          <div className="space-y-2 rounded border border-slate-300 bg-[#eff4ff] p-3 text-xs">
+          <div className="nmr-panel space-y-2 rounded-2xl p-3 text-xs">
             <div className="flex justify-between gap-3">
               <span className="text-slate-600">Drive Time</span>
               <span className="font-mono text-slate-950">
@@ -642,19 +646,19 @@ function DesktopRouteOverviewPanel({
             <span className="flex items-center gap-3 text-slate-900">
               <span className="h-2 w-2 rounded-full bg-slate-300" /> Not Contacted
             </span>
-            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{notContactedCount}</span>
+            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">{notContactedCount}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-3 text-slate-900">
               <span className="h-2 w-2 rounded-full bg-blue-400" /> Pending Resp.
             </span>
-            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{waitingCount}</span>
+            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">{waitingCount}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-3 text-slate-900">
               <span className="h-2 w-2 rounded-full bg-blue-700" /> Added to Route
             </span>
-            <span className="rounded bg-[#e5eeff] px-2 py-1 font-bold text-slate-950">{addedCount}</span>
+            <span className="rounded-full bg-white px-2.5 py-1 font-bold text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">{addedCount}</span>
           </div>
         </div>
         <div className="mt-10 grid gap-2">
@@ -709,22 +713,22 @@ function DesktopRouteTable({
   });
 
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto border-r border-slate-300 bg-white">
+    <section className="min-h-0 flex-1 overflow-y-auto border-r border-slate-200 bg-white/82">
       <div className="p-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-950">Planned Route: Tomorrow</h2>
             <p className="mt-1 text-base text-slate-700">Scheduled stops and proximity candidates</p>
           </div>
-          <select className="h-12 rounded border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 focus:ring-1 focus:ring-blue-700">
+          <select className="nmr-soft-field h-12 rounded-full px-4 text-sm font-bold text-slate-900 focus:ring-1 focus:ring-blue-700">
             <option>Sort by: Route Order</option>
             <option>Sort by: Detour Time</option>
           </select>
         </div>
         {locationReview ? <div className="mb-6">{locationReview}</div> : null}
-        <table className="w-full text-left text-sm">
+        <table className="w-full border-separate border-spacing-y-2 text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-300 text-[12px] uppercase tracking-[0.12em] text-slate-700">
+            <tr className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
               <th className="w-14 px-3 py-3 font-bold">Seq</th>
               <th className="px-3 py-3 font-bold">Facility Details</th>
               <th className="w-36 px-3 py-3 font-bold">Status</th>
@@ -736,7 +740,7 @@ function DesktopRouteTable({
             {rows.map((row) => {
               if (row.kind === "empty") {
                 return (
-                  <tr key="empty-candidates" className="border-b border-[#eff4ff]">
+                  <tr key="empty-candidates" className="rounded-2xl bg-white/70">
                     <td className="px-3 py-5 text-slate-500">--</td>
                     <td colSpan={4} className="px-3 py-5 text-center italic text-slate-600">
                       No candidates matching filters
@@ -751,16 +755,16 @@ function DesktopRouteTable({
                   <tr
                     key={`candidate-${opportunity.facility.id}`}
                     className={cx(
-                      "cursor-pointer border-b border-[#eff4ff] border-l-4 border-l-red-700 bg-red-50/60 align-top",
+                      "cursor-pointer rounded-2xl bg-amber-50/80 align-top shadow-[inset_4px_0_0_rgb(180_83_9),inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5",
                     )}
                     onClick={() => onSelectFacility(opportunity.facility.id)}
                   >
-                    <td className="px-3 py-5 text-base font-bold text-red-700">ADD</td>
+                    <td className="rounded-l-2xl px-3 py-5 text-base font-bold text-amber-700">ADD</td>
                     <td className="px-3 py-5">
                       <button type="button" onClick={() => onReviewFacility(opportunity.facility.id)} className="text-left">
                         <span className="flex items-center gap-2">
                           <span className="text-base font-bold text-slate-950">{opportunity.facility.name}</span>
-                          <span className="rounded bg-red-700 px-2 py-1 text-[10px] font-bold uppercase leading-none text-white">
+                          <span className="rounded-full bg-amber-700 px-2 py-1 text-[10px] font-bold uppercase leading-none text-white">
                             Best fit
                           </span>
                         </span>
@@ -770,14 +774,14 @@ function DesktopRouteTable({
                       </button>
                     </td>
                     <td className="px-3 py-5">
-                      <Badge tone="red">+{opportunity.addedDriveMinutes} min detour</Badge>
+                      <Badge tone="orange">+{opportunity.addedDriveMinutes} min detour</Badge>
                     </td>
                     <td className="px-3 py-5">
                       <p className="font-bold text-slate-950">Target Outreach</p>
                       <p className="text-xs text-slate-600">{opportunity.reasonBadges[0] ?? "Route fit"}</p>
                     </td>
                     <td className="px-3 py-5">
-                      <p className="font-bold text-red-700">+{opportunity.addedDriveMinutes} min</p>
+                      <p className="font-bold text-amber-700">+{opportunity.addedDriveMinutes} min</p>
                       <p className="text-[11px] uppercase text-slate-600">Impacts next stop</p>
                     </td>
                   </tr>
@@ -793,15 +797,15 @@ function DesktopRouteTable({
                 <tr
                   key={stop.id}
                   className={cx(
-                    "border-b border-[#eff4ff] align-top",
-                    isSelected && "bg-[#f8f9ff]",
-                    routeViewKind === "confirmation" && stop.status === "tentative" && "bg-green-50/70",
+                    "rounded-2xl bg-white/74 align-top shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                    isSelected && "bg-blue-50/90 ring-1 ring-blue-200",
+                    routeViewKind === "confirmation" && stop.status === "tentative" && "bg-emerald-50/80",
                   )}
                 >
-                  <td className={cx("px-3 py-5 text-base font-bold", isSelected ? "text-blue-700" : "text-slate-700")}>
+                  <td className={cx("rounded-l-2xl px-3 py-5 text-base font-bold", isSelected ? "text-blue-700" : "text-slate-700")}>
                     {String(stop.order).padStart(2, "0")}
                   </td>
-                  <td className="px-3 py-5">
+                  <td className="rounded-r-2xl px-3 py-5">
                     <button
                       type="button"
                       disabled={!facility}
@@ -882,9 +886,9 @@ function DesktopCandidatePanel({
 }) {
   if (!facility) {
     return (
-      <aside className="hidden w-[30rem] bg-[#f8f9ff] xl:grid xl:place-items-center">
+      <aside className="hidden w-[30rem] bg-slate-50/72 xl:grid xl:place-items-center">
         <div className="max-w-sm px-8 text-center">
-          <div className="mx-auto grid h-28 w-28 place-items-center rounded-full bg-[#d3e4fe] text-slate-400">
+          <div className="mx-auto grid h-28 w-28 place-items-center rounded-[2rem] bg-white text-slate-400 shadow-[0_24px_60px_rgba(15,23,42,0.1),inset_0_1px_0_rgba(255,255,255,0.9)]">
             <Search size={44} />
           </div>
           <h2 className="mt-6 text-2xl font-bold text-slate-950">Select a candidate</h2>
@@ -909,9 +913,9 @@ function DesktopCandidatePanel({
   const textIsBlockedByPhone = copyFeedback === "placeholder_phone" || copyFeedback === "invalid_phone";
 
   return (
-    <aside className="hidden min-h-0 w-[30rem] overflow-y-auto bg-[#f8f9ff] xl:block">
+    <aside className="hidden min-h-0 w-[30rem] overflow-y-auto bg-slate-50/72 xl:block">
       <div className="space-y-7 p-8">
-        <div className="border-b border-slate-300 pb-5">
+        <div className="border-b border-slate-200 pb-5">
           <div className="flex items-center justify-between gap-4">
             <p className="text-[12px] font-bold uppercase tracking-wide text-blue-700">Candidate detail</p>
             <p className="text-xs font-medium text-slate-700">ID: {facility.id.toUpperCase().slice(0, 8)}</p>
@@ -928,11 +932,12 @@ function DesktopCandidatePanel({
 
         <section>
           <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-slate-700">Key contact</h3>
-          <div className="border border-slate-300 bg-white p-5">
+          <div className="nmr-surface rounded-[1.5rem] p-1.5">
+            <div className="rounded-[1.1rem] bg-white p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             {contact ? (
               <>
                 <div className="flex items-center gap-4">
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-[#d3e4fe] text-sm font-bold text-blue-700">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-blue-50 text-sm font-bold text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                     {contact.name.slice(0, 1)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -944,7 +949,7 @@ function DesktopCandidatePanel({
                   <Phone size={18} className="text-blue-700" />
                 </div>
                 {isPlaceholderPhoneNumber(contact.phone) ? (
-                  <p className="mt-4 border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                  <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
                     Replace this placeholder number before opening Messages.
                   </p>
                 ) : null}
@@ -953,22 +958,24 @@ function DesktopCandidatePanel({
               <p className="text-sm font-medium text-slate-600">No known SLP contact yet.</p>
             )}
             {facility.notes ? (
-              <p className="mt-4 border border-slate-300 bg-[#eff4ff] p-3 text-sm italic leading-6 text-slate-800">
+              <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm italic leading-6 text-slate-800">
                 &quot;{facility.notes}&quot;
               </p>
             ) : null}
+            </div>
           </div>
         </section>
 
         <section>
           <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-slate-700">Route integration</h3>
-          <div className="border border-slate-300 bg-white p-5">
+          <div className="nmr-surface rounded-[1.5rem] p-1.5">
+            <div className="rounded-[1.1rem] bg-white p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             <div className="grid grid-cols-[auto_1fr_auto_1fr_auto] items-center gap-3">
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[#e5eeff] text-xs font-bold text-slate-700">02</span>
-              <span className="h-2 rounded-full bg-red-200">
-                <span className="block h-2 w-1/3 rounded-full bg-red-700" />
+              <span className="h-2 rounded-full bg-amber-100">
+                <span className="block h-2 w-1/3 rounded-full bg-amber-600" />
               </span>
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-700 text-[11px] font-bold text-white">ADD</span>
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-700 text-[11px] font-bold text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)]">ADD</span>
               <span className="h-2 rounded-full bg-[#e5eeff]" />
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[#e5eeff] text-xs font-bold text-slate-700">03</span>
             </div>
@@ -978,11 +985,12 @@ function DesktopCandidatePanel({
                 Preview route handoff
               </button>
             ) : null}
+            </div>
           </div>
         </section>
 
         {showAddedSuccess || todayStatus === "added" ? (
-          <div className="flex items-center justify-center gap-3 bg-green-600 px-4 py-3 text-base font-bold text-white">
+          <div className="flex items-center justify-center gap-3 rounded-full bg-emerald-600 px-4 py-3 text-base font-bold text-white shadow-[0_16px_34px_rgba(5,150,105,0.22)]">
             <Check size={18} /> Stop added to route
           </div>
         ) : canText ? (
@@ -1171,9 +1179,9 @@ function DesktopRouteDashboard({
     : [];
 
   return (
-    <div className="relative hidden min-h-0 flex-1 xl:flex">
+    <div className="nmr-enter relative hidden min-h-0 flex-1 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/55 shadow-[0_24px_80px_rgba(15,23,42,0.08)] xl:flex">
       {showAddedSuccess ? (
-        <div className="absolute left-1/2 top-4 z-[100] flex -translate-x-1/2 items-center gap-3 bg-green-600 px-6 py-3 text-base font-bold text-white shadow-lg">
+        <div className="absolute left-1/2 top-4 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-full bg-emerald-600 px-6 py-3 text-base font-bold text-white shadow-[0_18px_38px_rgba(5,150,105,0.24)]">
           <CheckCircle size={20} /> Stop added to route successfully
         </div>
       ) : null}
@@ -1289,7 +1297,7 @@ function LocationConfirmationCard({
   }
 
   return (
-    <article className="rounded-lg border border-orange-200 bg-white p-3 text-sm">
+    <article className="rounded-[1.35rem] border border-amber-200 bg-white p-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-black text-slate-950">{facility.name}</h3>
@@ -1305,7 +1313,7 @@ function LocationConfirmationCard({
           aria-label={`Address for ${facility.name}`}
           value={address}
           onChange={(event) => setAddress(event.target.value)}
-          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+          className="nmr-soft-field mt-1 h-9 w-full rounded-full px-3 text-sm font-semibold normal-case text-slate-900"
         />
       </label>
       <a
@@ -1332,7 +1340,7 @@ function LocationConfirmationCard({
             setMapsUrlSuccess(undefined);
           }}
           placeholder="Paste Google Maps URL"
-          className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+          className="nmr-soft-field mt-1 h-9 w-full rounded-full px-3 text-sm font-semibold normal-case text-slate-900"
         />
       </label>
       <p className="mt-1 text-xs font-semibold text-slate-500">
@@ -1359,7 +1367,7 @@ function LocationConfirmationCard({
             value={lat}
             onChange={(event) => setLat(event.target.value)}
             inputMode="decimal"
-            className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+            className="nmr-soft-field mt-1 h-9 w-full rounded-full px-3 text-sm font-semibold normal-case text-slate-900"
           />
         </label>
         <label className="block text-[11px] font-bold uppercase text-slate-500">
@@ -1369,7 +1377,7 @@ function LocationConfirmationCard({
             value={lng}
             onChange={(event) => setLng(event.target.value)}
             inputMode="decimal"
-            className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm font-semibold normal-case text-slate-900"
+            className="nmr-soft-field mt-1 h-9 w-full rounded-full px-3 text-sm font-semibold normal-case text-slate-900"
           />
         </label>
       </div>
@@ -2499,7 +2507,7 @@ function TentativeAddConfirmation({
   onRemoveTentative: () => void;
 }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4">
+    <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="rounded-lg border border-green-200 bg-green-50 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-green-700">Tentative add-on</p>
@@ -3300,17 +3308,17 @@ export default function NearMyRouteApp() {
   }));
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-[calc(6rem+env(safe-area-inset-bottom))] text-slate-950 sm:pb-0">
-      <header className="border-b border-slate-300 bg-white sm:sticky sm:top-0 sm:z-[500]">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3 px-4 py-3 xl:h-16 xl:px-8 xl:py-0">
+    <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))] text-slate-950 sm:pb-0">
+      <header className="bg-[#eef3f8] px-3 pt-3 pb-3 sm:sticky sm:top-0 sm:z-[500] sm:px-4 sm:pt-4">
+        <div className="nmr-surface nmr-enter mx-auto flex max-w-[1800px] items-center justify-between gap-3 rounded-[1.5rem] bg-white/98 px-4 py-3 xl:h-16 xl:px-5 xl:py-0">
           <div className="flex items-center gap-4 xl:gap-8">
-            <div className="grid h-10 w-10 place-items-center rounded bg-blue-700 text-white">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-950 text-white shadow-[0_16px_34px_rgba(15,23,42,0.22),inset_0_1px_0_rgba(255,255,255,0.18)]">
               <MapPinned size={22} />
             </div>
             <div className="-ml-2">
-              <h1 className="text-xl font-black uppercase leading-tight tracking-tight text-blue-700 xl:text-lg">Near My Route</h1>
+              <h1 className="text-xl font-black uppercase leading-tight text-slate-950 xl:text-lg">Near My Route</h1>
               <p className="text-xs font-medium text-slate-600 xl:hidden">Route-aware MBSS facility opportunities</p>
-              <p className="hidden text-[11px] font-medium uppercase tracking-wide text-slate-800 xl:block">
+              <p className="hidden text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 xl:block">
                 Administrative logistics portal
               </p>
             </div>
@@ -3323,10 +3331,10 @@ export default function NearMyRouteApp() {
                 aria-label={tab}
                 onClick={() => selectTopLevelTab(tab)}
                 className={cx(
-                  "border-b-2 px-1 text-sm font-semibold transition",
+                  "rounded-full px-4 py-2 text-sm font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
                   activeTab === tab
-                    ? "border-blue-700 text-blue-700"
-                    : "border-transparent text-slate-700 hover:border-slate-300 hover:text-blue-700",
+                    ? "bg-blue-700 text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)]"
+                    : "text-slate-600 hover:bg-white hover:text-blue-700",
                 )}
               >
                 {tab === "Near My Route"
@@ -3340,20 +3348,20 @@ export default function NearMyRouteApp() {
             ))}
           </nav>
           <div className="ml-auto hidden items-center gap-4 xl:flex">
-            <div className="flex items-center gap-2 border border-slate-300 bg-[#f8f9ff] px-3 py-2 text-sm font-medium text-slate-950">
+            <div className="nmr-soft-field flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-slate-950">
               <CalendarDays size={17} />
               <span>Tomorrow&apos;s Route</span>
             </div>
-            <div className="h-8 w-px bg-slate-300" />
-            <button type="button" className="p-2 text-slate-700 hover:text-blue-700" aria-label="Notifications">
+            <div className="h-8 w-px bg-slate-200" />
+            <button type="button" className="rounded-full p-2 text-slate-700 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white hover:text-blue-700" aria-label="Notifications">
               <Bell size={18} />
             </button>
-            <button type="button" className="p-2 text-slate-700 hover:text-blue-700" aria-label="Settings">
+            <button type="button" className="rounded-full p-2 text-slate-700 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white hover:text-blue-700" aria-label="Settings">
               <Settings size={18} />
             </button>
           </div>
           {showDemoTools ? (
-            <details className="hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm sm:block">
+            <details className="hidden rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] sm:block">
               <summary className="cursor-pointer font-bold text-slate-600">Demo tools</summary>
               <div className="mt-3 w-52">
                 <Button className="w-full" tone="ghost" onClick={resetDemo}>
@@ -3365,7 +3373,7 @@ export default function NearMyRouteApp() {
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-[1000] border-t border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
+      <nav className="sticky top-2 z-[400] mx-3 mt-1 rounded-[1.5rem] border border-slate-200 bg-white/96 px-2 py-2 shadow-[0_14px_34px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur sm:hidden">
         <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
           {(["Near My Route", "Import Schedule", "Outreach", "Facilities"] as AppTab[]).map((tab) => (
             <button
@@ -3374,8 +3382,8 @@ export default function NearMyRouteApp() {
               aria-label={tab}
               onClick={() => selectTopLevelTab(tab)}
               className={cx(
-                "min-h-11 rounded-md px-2 text-xs font-black transition",
-                activeTab === tab ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100",
+                "min-h-11 rounded-[1.1rem] px-2 text-xs font-black transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                activeTab === tab ? "bg-blue-700 text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)]" : "text-slate-600 hover:bg-slate-100",
               )}
             >
               {tabLabels[tab]}
@@ -3387,7 +3395,7 @@ export default function NearMyRouteApp() {
       {activeTab === "Near My Route" ? (
         <>
         {routeView.kind === "review" ? (
-          <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:hidden">
+          <main className="mx-auto max-w-2xl px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4 xl:hidden">
             <Button tone="ghost" onClick={() => closeFacilityReview(routeView)}>
               <ArrowLeft size={15} /> {reviewBackLabel(routeView)}
             </Button>
@@ -3432,10 +3440,10 @@ export default function NearMyRouteApp() {
         ) : null}
 
         <main className={cx(
-          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:h-[calc(100vh-4rem)] xl:px-0 xl:py-0",
+          "mx-auto flex max-w-[1800px] flex-col px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4 xl:h-[calc(100vh-5.5rem)] xl:px-4 xl:py-4",
           routeView.kind === "review" && "hidden xl:flex",
         )}>
-          <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/5 xl:hidden">
+          <section className="nmr-surface nmr-enter mb-3 rounded-[1.75rem] p-4 xl:hidden">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Route readiness</p>
@@ -3467,7 +3475,7 @@ export default function NearMyRouteApp() {
             </div>
           </section>
           <div className="grid min-h-0 flex-1 gap-4 xl:hidden">
-          <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <section className="flex w-full shrink-0 flex-col gap-3 rounded-[1.75rem] border border-slate-200 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
             <BestAddOnCard
               opportunity={featuredOpportunity}
               todayStatus={
@@ -3480,7 +3488,7 @@ export default function NearMyRouteApp() {
               onImport={() => selectTopLevelTab("Import Schedule")}
             />
 
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="nmr-panel rounded-3xl p-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-slate-950">Outreach status</h2>
                 <Badge tone="blue">{currentRouteStatusCounts.reduce((sum, item) => sum + item.count, 0)} on route</Badge>
@@ -3496,7 +3504,7 @@ export default function NearMyRouteApp() {
               </details>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="nmr-panel rounded-3xl p-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-slate-950">Tomorrow&apos;s route</h2>
                 {currentRouteSourceMapLink ? (
@@ -3542,7 +3550,7 @@ export default function NearMyRouteApp() {
                         type="button"
                         disabled={!facility}
                         onClick={() => facility && openFacilityReview(facility.id)}
-                      className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left hover:border-blue-200 hover:bg-blue-50"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/78 p-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-blue-200 hover:bg-blue-50"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
                         {stop.order}
@@ -3571,14 +3579,14 @@ export default function NearMyRouteApp() {
             />
 
             {showDemoTools ? (
-              <details className="rounded-lg border border-slate-200 bg-white p-3">
+              <details className="nmr-panel rounded-3xl p-3">
                 <summary className="cursor-pointer text-sm font-black text-slate-950">Demo tools</summary>
                 {dogfoodNoteWarning ? (
                   <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800">
                     {dogfoodNoteWarning}
                   </p>
                 ) : null}
-                <details open className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <details open className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
                   <summary className="cursor-pointer text-sm font-black text-slate-950">
                     Today route checklist ({dogfoodTasks.filter((task) => dogfoodChecked[task.id]).length}/{dogfoodTasks.length})
                   </summary>
@@ -3596,7 +3604,7 @@ export default function NearMyRouteApp() {
               </details>
             ) : null}
 
-            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
+            <details className="nmr-panel rounded-3xl p-3 lg:hidden">
               <summary className="cursor-pointer text-sm font-black text-slate-950">Opportunity filters</summary>
               <div className="mt-3">
                 <label className="block text-xs font-bold uppercase text-slate-500">
@@ -3637,7 +3645,7 @@ export default function NearMyRouteApp() {
               </div>
             </details>
 
-            <div className="hidden rounded-lg border border-slate-200 bg-white p-3 lg:block">
+            <div className="nmr-panel hidden rounded-3xl p-3 lg:block">
               <div className="flex items-center gap-2">
                 <Filter size={15} className="text-slate-500" />
                 <h2 className="text-sm font-black text-slate-950">Opportunity filters</h2>
@@ -3679,7 +3687,7 @@ export default function NearMyRouteApp() {
               </div>
             </div>
 
-            <details className="rounded-lg border border-slate-200 bg-white p-3 lg:hidden">
+            <details className="nmr-panel rounded-3xl p-3 lg:hidden">
               <summary className="cursor-pointer text-sm font-black text-slate-950">
                 More opportunities ({opportunities.length})
               </summary>
@@ -3753,7 +3761,8 @@ export default function NearMyRouteApp() {
             </div>
           </section>
 
-          <section className="relative hidden min-h-[560px] overflow-hidden rounded-xl border border-slate-200 bg-white xl:sticky xl:top-24 xl:block xl:h-[calc(100vh-7rem)]">
+          <section className="nmr-surface relative hidden min-h-[560px] overflow-hidden rounded-[1.75rem] p-1.5 xl:sticky xl:top-24 xl:block xl:h-[calc(100vh-7rem)]">
+            <div className="h-full overflow-hidden rounded-[1.35rem]">
             <RouteMap
               facilities={facilities}
               routeStops={routeStops}
@@ -3762,10 +3771,11 @@ export default function NearMyRouteApp() {
               selectedFacilityId={selectedFacilityId}
               onSelectFacility={(facilityId) => openFacilityReview(facilityId)}
             />
+            </div>
           </section>
 
           <DetailDrawer
-            className="hidden xl:sticky xl:top-24 xl:block xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:rounded-xl xl:border xl:border-slate-200"
+            className="hidden xl:sticky xl:top-24 xl:block xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:rounded-[1.75rem] xl:border xl:border-slate-200"
             facility={selectedFacility}
             opportunity={selectedFilteredOpportunity}
             todayStatus={selectedTodayStatus}
@@ -3841,8 +3851,8 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Facilities" ? (
-        <main className="mx-auto grid max-w-[1800px] gap-4 px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 xl:grid-cols-[1fr_380px]">
-          <section className="rounded-xl border border-slate-200 bg-white">
+        <main className="mx-auto grid max-w-[1800px] gap-4 px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4 xl:grid-cols-[1fr_380px]">
+          <section className="nmr-surface nmr-enter overflow-hidden rounded-[1.75rem]">
             <div className="border-b border-slate-200 p-4">
               <h2 className="text-lg font-black">Facilities</h2>
               <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px_190px_190px]">
@@ -3886,7 +3896,7 @@ export default function NearMyRouteApp() {
                   <article
                     key={facility.id}
                     className={cx(
-                      "rounded-lg border bg-white p-3 shadow-sm",
+                      "nmr-panel rounded-3xl p-3",
                       selectedFacilityId === facility.id ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200",
                     )}
                   >
@@ -4002,8 +4012,8 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Import Schedule" ? (
-        <main className="mx-auto grid max-w-6xl gap-4 px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4 lg:grid-cols-[420px_1fr]">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <main className="mx-auto grid max-w-6xl gap-4 px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4 lg:grid-cols-[420px_1fr]">
+          <section className="nmr-surface nmr-enter rounded-[1.75rem] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step 1</p>
             <h2 className="mt-1 text-lg font-black">Import tomorrow&apos;s route</h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -4011,7 +4021,7 @@ export default function NearMyRouteApp() {
                 ? "Paste the email body/map link and, if needed, copied PDF table text. PDF table text is used only to identify stop-review hints like Home Health/private stops, then cleared after parsing. Patient details are not saved to review rows."
                 : "Paste tomorrow's stops. Patient details do not belong here."}
             </p>
-            <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-full border border-slate-200 bg-slate-100/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
               {([
                 ["schedule", "Schedule"],
                 ["van_packet", "Van Packet"],
@@ -4027,8 +4037,8 @@ export default function NearMyRouteApp() {
                     setVanPacketPdfText(mode === "schedule" ? "" : sampleVanPacketPdfText);
                   }}
                   className={cx(
-                    "rounded-md px-3 py-2 text-sm font-bold transition",
-                    importMode === mode ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white",
+                    "rounded-full px-3 py-2 text-sm font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                    importMode === mode ? "bg-white text-blue-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)]" : "text-slate-600 hover:bg-white",
                   )}
                 >
                   {label}
@@ -4127,7 +4137,7 @@ export default function NearMyRouteApp() {
             ) : null}
           </section>
 
-          <section id="import-review-section" className="rounded-xl border border-slate-200 bg-white p-4">
+          <section id="import-review-section" className="nmr-surface nmr-enter rounded-[1.75rem] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step 2</p>
@@ -4380,8 +4390,8 @@ export default function NearMyRouteApp() {
       ) : null}
 
       {activeTab === "Outreach" ? (
-        <main className="mx-auto max-w-6xl px-4 pt-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:py-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <main className="mx-auto max-w-6xl px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:py-4">
+          <section className="nmr-surface nmr-enter rounded-[1.75rem] p-4">
             <h2 className="text-lg font-black">Outreach</h2>
             <p className="mt-1 text-sm text-slate-500">
               Work today&apos;s facility responses first. Templates intentionally avoid PHI.

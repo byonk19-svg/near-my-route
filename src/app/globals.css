@@ -2,8 +2,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f1f5f9;
+  --background: #eef3f8;
   --foreground: #0f172a;
+  --surface: #fbfdff;
+  --surface-muted: #f4f7fb;
+  --hairline: rgb(15 23 42 / 0.08);
+  --motion-curve: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
@@ -24,9 +28,29 @@ body {
 
 body {
   margin: 0;
-  background: var(--background);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.72), rgb(238 243 248 / 0.88) 42%, #edf2f7),
+    var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  text-rendering: geometricPrecision;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(15 23 42 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.025) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, black, transparent 78%);
+}
+
+::selection {
+  background: rgb(37 99 235 / 0.18);
 }
 
 button,
@@ -38,7 +62,7 @@ textarea {
 
 .leaflet-container {
   background: #e2e8f0;
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 .leaflet-control-attribution {
@@ -60,8 +84,53 @@ textarea {
 }
 
 .leaflet-popup-content-wrapper {
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgb(15 23 42 / 0.16);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 0.18);
+}
+
+@keyframes nmr-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.99);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.nmr-enter {
+  animation: nmr-enter 720ms var(--motion-curve) both;
+}
+
+.nmr-surface {
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.85),
+    0 24px 70px rgb(15 23 42 / 0.08);
+}
+
+.nmr-panel {
+  border: 1px solid rgb(15 23 42 / 0.08);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.85),
+    0 18px 48px rgb(15 23 42 / 0.07);
+}
+
+.nmr-soft-field {
+  border: 1px solid rgb(15 23 42 / 0.1);
+  background: rgb(255 255 255 / 0.82);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nmr-enter {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {
