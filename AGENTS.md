@@ -84,6 +84,7 @@ Main areas:
 - `src/components/RouteMap.tsx` - map rendering.
 - `src/lib/routeCalculations.ts` - route opportunity calculations and future routing API seam.
 - `src/lib/googleMaps.ts` - Google Maps directions handoff.
+- `src/lib/routeHandoff.ts` - current-route Google Maps handoff readiness.
 - `src/lib/locationTrust.ts` - location confirmation guardrails.
 - `src/lib/routeLocations.ts` - shared route-stop location resolution for facilities and private stops.
 - `src/lib/scheduleImport.ts` - schedule paste/import parsing.

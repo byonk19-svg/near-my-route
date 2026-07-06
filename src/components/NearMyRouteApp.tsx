@@ -49,11 +49,8 @@ import {
 } from "@/lib/format";
 import {
   buildGoogleMapsDirectionsUrl,
-  googleMapsWaypointWarning,
-  orderedRouteFacilities,
   parseGoogleMapsCoordinates,
   routeFacilitiesWithInsertedAddOn,
-  splitGoogleMapsDirectionsUrls,
 } from "@/lib/googleMaps";
 import { isDueForFollowUp, outreachRecencyLabel, outreachRecencyState } from "@/lib/outreachRecency";
 import {
@@ -81,7 +78,7 @@ import {
   type TextFeedback,
 } from "@/lib/outreachMessageHandoff";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
-import { hasConfirmedLocation, isFallbackLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
+import { hasConfirmedLocation, isFallbackLocation, locationConfirmationIssue } from "@/lib/locationTrust";
 import {
   addRouteAddOn,
   removeRouteAddOn,
@@ -89,6 +86,7 @@ import {
   type RouteAddOnSnapshot,
 } from "@/lib/routeAddOnLifecycle";
 import { confirmLocationReview } from "@/lib/locationReview";
+import { buildRouteHandoff } from "@/lib/routeHandoff";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -2752,22 +2750,16 @@ export default function NearMyRouteApp() {
     importSummary.unresolved > 0
       ? `Resolve ${importSummary.unresolved} ${importSummary.unresolved === 1 ? "Row" : "Rows"} Before Confirming`
       : `Confirm ${importSummary.confirmed} ${importSummary.confirmed === 1 ? "Stop" : "Stops"}`;
-  const currentRouteFacilities = orderedRouteFacilities(routeStops, facilities);
-  const currentRouteUnconfirmedFacilities = unconfirmedRouteFacilities(orderedRouteStops, facilities);
-  const currentRouteFacilityIds = new Set(orderedRouteStops.map((stop) => stop.facilityId));
-  const currentRouteLocationWarning =
-    currentRouteUnconfirmedFacilities.length > 0
-      ? `Route includes unconfirmed locations: ${currentRouteUnconfirmedFacilities.map((facility) => facility.name).join(", ")}. Confirm location before trusting add-on ranking or Maps handoff.`
-      : undefined;
-  const currentRouteLocationOutreachWarning =
-    currentRouteUnconfirmedFacilities.length > 0
-      ? "Route includes unconfirmed locations. Review locations before trusting add-on ranking or Maps handoff."
-      : undefined;
-  const isCurrentRouteMapsBlocked = Boolean(currentRouteLocationWarning);
-  const currentRouteMapsUrl = buildGoogleMapsDirectionsUrl(currentRouteFacilities);
-  const currentRouteMapsWarning = googleMapsWaypointWarning(currentRouteFacilities.length);
-  const currentRouteSplitUrls = splitGoogleMapsDirectionsUrls(currentRouteFacilities);
-  const currentRouteSourceMapLink = orderedRouteStops.find((stop) => stop.sourceMapLink)?.sourceMapLink;
+  const routeHandoff = buildRouteHandoff(routeStops, facilities);
+  const currentRouteUnconfirmedFacilities = routeHandoff.unconfirmedLocations;
+  const currentRouteFacilityIds = routeHandoff.facilityIds;
+  const currentRouteLocationWarning = routeHandoff.locationWarning;
+  const currentRouteLocationOutreachWarning = routeHandoff.locationOutreachWarning;
+  const isCurrentRouteMapsBlocked = routeHandoff.isMapsBlocked;
+  const currentRouteMapsUrl = routeHandoff.mapsUrl;
+  const currentRouteMapsWarning = routeHandoff.mapsWarning;
+  const currentRouteSplitUrls = routeHandoff.splitMapsUrls;
+  const currentRouteSourceMapLink = routeHandoff.sourceMapLink;
   const detourRankByFacilityId = new Map(
     [...opportunities]
       .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)
@@ -2776,17 +2768,9 @@ export default function NearMyRouteApp() {
   const featuredOpportunity = [...opportunities]
     .filter((opportunity) => opportunity.group !== "Not Worth It Today")
     .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)[0];
-  const routeNeedsLocationReview = currentRouteUnconfirmedFacilities.length > 0;
-  const routeReadinessTitle = routeNeedsLocationReview
-    ? "Tomorrow's route needs location review"
-    : `Tomorrow's route ready`;
-  const routeTextReadyCount = orderedRouteStops
-    .map((stop) => facilityById.get(stop.facilityId))
-    .filter((facility): facility is Facility => {
-      if (!facility) return false;
-      return textReadiness(facility) === "ready";
-    }).length;
-  const routeReadinessSummary = `${orderedRouteStops.length} ${orderedRouteStops.length === 1 ? "stop" : "stops"} imported - ${routeNeedsLocationReview ? `${currentRouteUnconfirmedFacilities.length} ${currentRouteUnconfirmedFacilities.length === 1 ? "location" : "locations"} need confirm` : "locations confirmed"} - ${routeTextReadyCount} text-ready ${routeTextReadyCount === 1 ? "facility" : "facilities"}`;
+  const routeNeedsLocationReview = routeHandoff.needsLocationReview;
+  const routeReadinessTitle = routeHandoff.readinessTitle;
+  const routeReadinessSummary = routeHandoff.readinessSummary;
 
   function selectFacility(facilityId: string) {
     setSelectedFacilityId(facilityId);

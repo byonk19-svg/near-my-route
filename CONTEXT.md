@@ -48,6 +48,10 @@ _Avoid_: Facility, add-on candidate
 The confirmation workflow for imported, changed, fallback, or private route locations before they can drive route ranking or app-generated Maps handoff.
 _Avoid_: Geocoding, route approval
 
+**Route Handoff**:
+The workflow step where the current route is handed to Google Maps for navigation. A Route Handoff should only be trusted after Location Review is complete for imported, changed, fallback, or private route locations.
+_Avoid_: Live routing, route optimization
+
 **Facility Alias**:
 A local alternate facility label learned from import review, used to improve future matching while still requiring review when the alias is not supported by address evidence.
 _Avoid_: Patient label, contact alias
