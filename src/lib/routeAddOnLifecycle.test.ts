@@ -99,6 +99,28 @@ test("addRouteAddOn inserts before the first stop when the snapshot has no after
   );
 });
 
+test("addRouteAddOn appends after the final stop when the insertion anchor is stale", () => {
+  const result = addRouteAddOn({
+    routeStops: [scheduledStop("stop-1", "first", 1), scheduledStop("stop-2", "second", 2)],
+    outreachLogs: [],
+    facilityId: "candidate",
+    routeStopId: "stop-addon",
+    outreachLogId: "log-addon",
+    createdAt: "2026-07-06T13:00:00.000Z",
+    snapshot: { ...snapshot, bestInsertionAfterStopId: "missing-stop" },
+  });
+
+  assert.equal(result.kind, "added");
+  assert.deepEqual(
+    result.routeStops.map((stop) => [stop.id, stop.order]),
+    [
+      ["stop-1", 1],
+      ["stop-2", 2],
+      ["stop-addon", 3],
+    ],
+  );
+});
+
 test("addRouteAddOn reopens an existing tentative add-on without adding a duplicate log", () => {
   const existingAddOn: RouteStop = {
     ...scheduledStop("stop-addon", "candidate", 2),

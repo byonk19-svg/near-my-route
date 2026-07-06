@@ -73,7 +73,8 @@ function insertionOrder(routeStops: RouteStop[], afterStopId?: string) {
   if (!afterStopId) return orderedStops[0].order - 0.5;
 
   const afterStop = orderedStops.find((stop) => stop.id === afterStopId);
-  return afterStop ? afterStop.order + 0.5 : orderedStops.at(-1)?.order ?? orderedStops.length + 1;
+  const finalStop = orderedStops.at(-1);
+  return afterStop ? afterStop.order + 0.5 : (finalStop?.order ?? orderedStops.length) + 0.5;
 }
 
 export function routeAddOnStopForFacility(routeStops: RouteStop[], facilityId: string) {
