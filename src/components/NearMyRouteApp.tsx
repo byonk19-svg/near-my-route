@@ -88,6 +88,7 @@ import {
   routeAddOnStopForFacility,
   type RouteAddOnSnapshot,
 } from "@/lib/routeAddOnLifecycle";
+import { confirmLocationReview } from "@/lib/locationReview";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -2975,38 +2976,11 @@ export default function NearMyRouteApp() {
   }
 
   function confirmFacilityLocation(locationId: string, patch: { address: string; lat: number; lng: number }) {
-    setFacilities((current) =>
-      current.map((facility) =>
-        facility.id === locationId
-          ? {
-              ...facility,
-              address: patch.address,
-              lat: patch.lat,
-              lng: patch.lng,
-              locationStatus: "confirmed",
-              locationSource: facility.locationSource === "import" ? "import" : "geocoded",
-            }
-          : facility,
-      ),
-    );
-    setRouteStops((current) =>
-      current.map((stop) =>
-        stop.privateLocation?.id === locationId
-          ? {
-              ...stop,
-              privateLocation: {
-                ...stop.privateLocation,
-                address: patch.address,
-                lat: patch.lat,
-                lng: patch.lng,
-                locationStatus: "confirmed",
-                locationSource: "import",
-              },
-            }
-          : stop,
-      ),
-    );
-    if (facilities.some((facility) => facility.id === locationId)) setSelectedFacilityId(locationId);
+    const result = confirmLocationReview({ facilities, routeStops, locationId, patch });
+    if (!result.ok) return;
+    setFacilities(result.facilities);
+    setRouteStops(result.routeStops);
+    if (result.confirmedFacilityId) setSelectedFacilityId(result.confirmedFacilityId);
   }
 
   function parseImportSchedule() {
