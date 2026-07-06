@@ -2,6 +2,11 @@ import type { Facility, ImportReviewRow, VanPacketSummary } from "./types";
 import { normalizeImportValue } from "./scheduleImport";
 import { facilityAliasValues, isSafeFacilityAlias, sanitizeFacilityAlias } from "./facilityAliases";
 
+export type VanPacketImportOptions = {
+  supplementalText?: string;
+  nextId?: (purpose: "row") => string;
+};
+
 const FIELD_LABELS = [
   "NAME OF TEAM MEMBERS",
   "VAN NAME",
@@ -361,7 +366,7 @@ function facilityNameFromAddress(address: string, index: number, options?: { isP
 export function parseVanPacketText(
   text: string,
   facilities: Facility[],
-  options?: { supplementalText?: string },
+  options?: VanPacketImportOptions,
 ): { summary: VanPacketSummary; rows: ImportReviewRow[] } {
   const mapLink = firstUrl(fieldValue(text, "MAP LINK")) ?? firstUrl(text);
   const routeAddresses = addressesFromGoogleMapsDirUrl(mapLink);
@@ -411,7 +416,7 @@ export function parseVanPacketText(
           : undefined;
 
     return {
-      id: `van-packet-${index}-${Date.now()}`,
+      id: options?.nextId?.("row") ?? `van-packet-${index}-${Date.now()}`,
       raw: address,
       facilityName: privateRouteStop || meetRouteStop
         ? facilityNameFromAddress(address, index, { isPrivate: privateRouteStop, isMeet: meetRouteStop })

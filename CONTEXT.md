@@ -32,6 +32,10 @@ _Avoid_: Patient packet, chart packet
 A parsed row that must be resolved before confirming a route. It can use an existing Facility, create a new Facility, become a Private Route Stop, or be skipped.
 _Avoid_: Lead, referral row
 
+**Import Review**:
+The workflow after parsing a Schedule or Van Packet where parsed route items are resolved before confirming a route.
+_Avoid_: Lead review, referral review
+
 **Private Route Stop**:
 A route-only stop, usually for Home Health or another private/residential address, that can exist on the current route but must not become a Facility or outreach candidate.
 _Avoid_: Facility, site, account

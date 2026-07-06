@@ -2,6 +2,10 @@ import type { Facility, ImportReviewRow, RouteStop } from "./types";
 import { FALLBACK_LOCATION_COORDINATES } from "./locationTrust";
 import { appendFacilityAlias } from "./facilityAliases";
 
+export type ScheduleImportIdOptions = {
+  nextId?: (purpose: "row") => string;
+};
+
 const TRAILING_STUDY_COUNT_PATTERN = /,?\s*(\d+)\s*(study|studies)\s*$/i;
 const LEADING_TIME_PATTERN = /^(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*,?\s*/i;
 const AUTO_MATCH_CONFIDENCE = 75;
@@ -100,7 +104,11 @@ export function importRowBlockingReason(row: ImportReviewRow) {
   return undefined;
 }
 
-export function parseScheduleText(text: string, facilities: Facility[]): ImportReviewRow[] {
+export function parseScheduleText(
+  text: string,
+  facilities: Facility[],
+  options?: ScheduleImportIdOptions,
+): ImportReviewRow[] {
   return text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -120,7 +128,7 @@ export function parseScheduleText(text: string, facilities: Facility[]): ImportR
       const autoUseExisting = Boolean(match?.facility.id && confidence >= AUTO_MATCH_CONFIDENCE);
 
       return {
-        id: `import-${index}-${Date.now()}`,
+        id: options?.nextId?.("row") ?? `import-${index}-${Date.now()}`,
         raw: line,
         appointmentTime,
         facilityName,

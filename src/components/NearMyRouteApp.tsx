@@ -26,10 +26,16 @@ import {
 } from "lucide-react";
 import { initialFacilities, initialOutreachLogs, initialRouteStops } from "@/lib/mockData";
 import { calculateRouteOpportunities } from "@/lib/routeCalculations";
-import { applyImportRows, importRowBlockingReason, parseScheduleText } from "@/lib/scheduleImport";
-import { parseVanPacketText } from "@/lib/vanPacketImport";
+import {
+  confirmImportReview,
+  importReviewModel,
+  parseImportReview,
+  updateImportReviewRow,
+  type ImportReviewDraft,
+  type ImportReviewIdPurpose,
+} from "@/lib/importReview";
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
-import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteLocation, RouteStop, VanPacketSummary } from "@/lib/types";
+import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteLocation, RouteStop } from "@/lib/types";
 import {
   buildSmsUrl,
   canAttemptSms,
@@ -2393,6 +2399,7 @@ function ImportReviewCards({
   rows,
   facilities,
   facilityById,
+  issuesByRowId,
   expandedRowIds,
   onToggleRowExpansion,
   onUpdateRow,
@@ -2402,6 +2409,7 @@ function ImportReviewCards({
   rows: ImportReviewRow[];
   facilities: Facility[];
   facilityById: Map<string, Facility>;
+  issuesByRowId: Record<string, string>;
   expandedRowIds: Record<string, boolean>;
   onToggleRowExpansion: (rowId: string) => void;
   onUpdateRow: (rowId: string, patch: Partial<ImportReviewRow>) => void;
@@ -2421,7 +2429,7 @@ function ImportReviewCards({
       {rows.map((row, index) => {
         const matchName = row.matchedFacilityId ? facilityById.get(row.matchedFacilityId)?.name : undefined;
         const confidenceTone = row.confidence >= 75 ? "green" : row.confidence >= 45 ? "orange" : "slate";
-        const issue = importRowBlockingReason(row);
+        const issue = issuesByRowId[row.id];
         const statusTone = importReviewStatusTone(row, issue);
         const statusLabel = importReviewStatusLabel(row, issue);
         const isExpanded = Boolean(expandedRowIds[row.id]);
@@ -2593,8 +2601,7 @@ export default function NearMyRouteApp() {
   const [importMode, setImportMode] = useState<ImportMode>("schedule");
   const [scheduleText, setScheduleText] = useState(sampleSchedule);
   const [vanPacketPdfText, setVanPacketPdfText] = useState("");
-  const [vanPacketSummary, setVanPacketSummary] = useState<VanPacketSummary>();
-  const [reviewRows, setReviewRows] = useState<ImportReviewRow[]>([]);
+  const [importReviewDraft, setImportReviewDraft] = useState<ImportReviewDraft>();
   const [expandedImportRowIds, setExpandedImportRowIds] = useState<Record<string, boolean>>({});
   const [manualStatus, setManualStatus] = useState<OutreachStatus>("texted");
   const [dogfoodChecked, setDogfoodChecked] = useState<Record<string, boolean>>({});
@@ -2613,6 +2620,16 @@ export default function NearMyRouteApp() {
   function nextId(prefix: string) {
     idCounterRef.current += 1;
     return `${prefix}-${Date.now()}-${idCounterRef.current}`;
+  }
+
+  function nextImportReviewId(purpose: ImportReviewIdPurpose) {
+    const prefixes: Record<ImportReviewIdPurpose, string> = {
+      row: "import-row",
+      facility: "facility",
+      "private-route-stop": "private-stop",
+      "route-stop": "stop",
+    };
+    return nextId(prefixes[purpose]);
   }
 
   useEffect(() => {
@@ -2712,19 +2729,22 @@ export default function NearMyRouteApp() {
       .map((stop) => todayStatusByFacilityId.get(stop.facilityId))
       .filter((status): status is TodayStatus => Boolean(status)),
   );
-  const importBlockingRows = reviewRows.filter((row) => importRowBlockingReason(row));
-  const importSummary = {
-    useExisting: reviewRows.filter((row) => row.action === "use_existing").length,
-    createNew: reviewRows.filter((row) => row.action === "create_new").length,
-    privateRouteStop: reviewRows.filter((row) => row.action === "private_route_stop").length,
-    skipped: reviewRows.filter((row) => row.action === "skip").length,
-    unresolved: importBlockingRows.length,
-    confirmed: reviewRows.filter((row) => row.action !== "skip" && !importRowBlockingReason(row)).length,
+  const currentImportReviewModel = importReviewDraft ? importReviewModel(importReviewDraft) : undefined;
+  const vanPacketSummary =
+    importReviewDraft?.source.kind === "van_packet" ? importReviewDraft.source.summary : undefined;
+  const reviewRows = currentImportReviewModel?.rows ?? [];
+  const visibleImportReviewRows = currentImportReviewModel?.visibleRows ?? [];
+  const routeAnchorRows = currentImportReviewModel?.routeAnchorRows ?? [];
+  const importIssuesByRowId = currentImportReviewModel?.issuesByRowId ?? {};
+  const importSummary = currentImportReviewModel?.summary ?? {
+    useExisting: 0,
+    createNew: 0,
+    privateRouteStop: 0,
+    skipped: 0,
+    unresolved: 0,
+    confirmed: 0,
   };
-  const routeAnchorRows = reviewRows.filter((row) => row.routeOnlyReason === "route_anchor");
-  const visibleImportReviewRows =
-    importMode === "van_packet" ? reviewRows.filter((row) => row.routeOnlyReason !== "route_anchor") : reviewRows;
-  const canConfirmImport = reviewRows.length > 0 && importSummary.confirmed > 0 && importSummary.unresolved === 0;
+  const canConfirmImport = Boolean(currentImportReviewModel?.canConfirm);
   const confirmImportLabel =
     importSummary.unresolved > 0
       ? `Resolve ${importSummary.unresolved} ${importSummary.unresolved === 1 ? "Row" : "Rows"} Before Confirming`
@@ -2892,7 +2912,7 @@ export default function NearMyRouteApp() {
   }
 
   function updateReviewRow(rowId: string, patch: Partial<ImportReviewRow>) {
-    setReviewRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+    setImportReviewDraft((current) => current ? updateImportReviewRow(current, rowId, patch) : current);
   }
 
   function updateContactPhone(facilityId: string, contactId: string, phone: string) {
@@ -2995,9 +3015,13 @@ export default function NearMyRouteApp() {
     };
 
     if (importMode === "van_packet") {
-      const result = parseVanPacketText(scheduleText, facilities, { supplementalText: vanPacketPdfText });
-      setVanPacketSummary(result.summary);
-      setReviewRows(result.rows);
+      setImportReviewDraft(parseImportReview({
+        mode: "van_packet",
+        text: scheduleText,
+        supplementalText: vanPacketPdfText,
+        facilities,
+        nextId: nextImportReviewId,
+      }));
       setExpandedImportRowIds({});
       setScheduleText("");
       setVanPacketPdfText("");
@@ -3005,8 +3029,12 @@ export default function NearMyRouteApp() {
       return;
     }
 
-    setVanPacketSummary(undefined);
-    setReviewRows(parseScheduleText(scheduleText, facilities));
+    setImportReviewDraft(parseImportReview({
+      mode: "schedule",
+      text: scheduleText,
+      facilities,
+      nextId: nextImportReviewId,
+    }));
     setExpandedImportRowIds({});
     showImportReview();
   }
@@ -3016,11 +3044,14 @@ export default function NearMyRouteApp() {
   }
 
   function confirmImportedRoute() {
-    if (!canConfirmImport) return;
-    const result = applyImportRows(reviewRows, facilities);
+    if (!importReviewDraft || !canConfirmImport) return;
+    const result = confirmImportReview(importReviewDraft, facilities, { nextId: nextImportReviewId });
+    if (!result.ok) return;
     setFacilities(result.facilities);
     setRouteStops(result.routeStops);
-    openRouteHome(result.routeStops[0]?.facilityId ?? selectedFacilityId);
+    setImportReviewDraft(undefined);
+    setExpandedImportRowIds({});
+    openRouteHome(result.initialFacilityId ?? selectedFacilityId);
   }
 
   async function copySafeMessage(facilityId: string, feedback: TextFeedback = "copied") {
@@ -3277,8 +3308,7 @@ export default function NearMyRouteApp() {
     setDogfoodChecked({});
     setDogfoodNotes("");
     setDogfoodNoteWarning(undefined);
-    setReviewRows([]);
-    setVanPacketSummary(undefined);
+    setImportReviewDraft(undefined);
     setImportMode("schedule");
     setScheduleText(sampleSchedule);
     setVanPacketPdfText("");
@@ -4031,8 +4061,7 @@ export default function NearMyRouteApp() {
                   type="button"
                   onClick={() => {
                     setImportMode(mode);
-                    setVanPacketSummary(undefined);
-                    setReviewRows([]);
+                    setImportReviewDraft(undefined);
                     setScheduleText(mode === "schedule" ? sampleSchedule : sampleVanPacket);
                     setVanPacketPdfText(mode === "schedule" ? "" : sampleVanPacketPdfText);
                   }}
@@ -4231,6 +4260,7 @@ export default function NearMyRouteApp() {
                 rows={visibleImportReviewRows}
                 facilities={facilities}
                 facilityById={facilityById}
+                issuesByRowId={importIssuesByRowId}
                 expandedRowIds={expandedImportRowIds}
                 onToggleRowExpansion={toggleImportRowExpansion}
                 onUpdateRow={updateReviewRow}
@@ -4243,6 +4273,7 @@ export default function NearMyRouteApp() {
                   rows={visibleImportReviewRows}
                   facilities={facilities}
                   facilityById={facilityById}
+                  issuesByRowId={importIssuesByRowId}
                   expandedRowIds={expandedImportRowIds}
                   onToggleRowExpansion={toggleImportRowExpansion}
                   onUpdateRow={updateReviewRow}
@@ -4271,7 +4302,7 @@ export default function NearMyRouteApp() {
                     </tr>
                   ) : (
                     reviewRows.map((row, index) => {
-                      const issue = importRowBlockingReason(row);
+                      const issue = importIssuesByRowId[row.id];
                       const isExpanded = Boolean(expandedImportRowIds[row.id]);
                       const canCollapseMatch = canCollapseImportRow(row, issue);
                       const showControls = !canCollapseMatch || isExpanded;
