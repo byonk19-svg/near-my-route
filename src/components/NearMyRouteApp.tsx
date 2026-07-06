@@ -1073,7 +1073,7 @@ function DesktopCandidatePanel({
             ) : null}
             {copyFeedback === "no_phone" ? (
               <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
-                No phone number is saved. Use the visible template manually, then mark this facility texted.
+                No phone number is saved. Add a real phone number before marking this facility texted.
               </p>
             ) : null}
             {copyFeedback === "placeholder_phone" ? (
@@ -1750,7 +1750,7 @@ function DetailDrawer({
           ) : null}
           {copyFeedback === "no_phone" ? (
             <p className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-800">
-              No phone number is saved. Use the visible template manually, then mark this facility texted.
+              No phone number is saved. Add a real phone number before marking this facility texted.
             </p>
           ) : null}
           {copyFeedback === "placeholder_phone" ? (
