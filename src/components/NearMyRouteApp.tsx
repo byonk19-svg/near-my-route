@@ -37,7 +37,6 @@ import {
 import { clearStoredState, loadStoredState, saveStoredState } from "@/lib/storage";
 import type { Facility, FacilityContact, ImportReviewRow, Opportunity, OutreachLog, OutreachStatus, PreferredMethod, RouteLocation, RouteStop } from "@/lib/types";
 import {
-  buildSmsUrl,
   canAttemptSms,
   formatDaysAgo,
   friendlyValue,
@@ -45,7 +44,6 @@ import {
   isPlaceholderPhoneNumber,
   primaryContact,
   safeMessage,
-  textContacts,
   textReadyContacts,
   todayIsoDate,
 } from "@/lib/format";
@@ -74,6 +72,14 @@ import {
   textReadiness,
   type OutreachQueueItem,
 } from "@/lib/outreachPriority";
+import {
+  markTextedEligibility,
+  planOutreachMessageHandoff,
+  planOutreachMessageHandoffForContact,
+  selectableTextContacts,
+  type OutreachMessageHandoffResult,
+  type TextFeedback,
+} from "@/lib/outreachMessageHandoff";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
 import { hasConfirmedLocation, isFallbackLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
 
@@ -168,8 +174,6 @@ type OpportunitySnapshot = {
   nearestStopDistanceMiles: number;
   reasonBadges: string[];
 };
-
-type TextFeedback = "copied" | "failed" | "opened" | "fallback_copied" | "no_phone" | "placeholder_phone" | "invalid_phone";
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -2699,7 +2703,7 @@ export default function NearMyRouteApp() {
     ? todayStatusByFacilityId.get(selectedFacility.id)
     : undefined;
   const textPickerFacility = textPickerFacilityId ? facilities.find((facility) => facility.id === textPickerFacilityId) : undefined;
-  const textPickerContacts = textPickerFacility ? textReadyContacts(textPickerFacility) : [];
+  const textPickerContacts = textPickerFacility ? selectableTextContacts(textPickerFacility) : [];
   const todayQueue = sortOutreachQueue(facilities
     .map((facility) => {
       const opportunity =
@@ -3073,74 +3077,70 @@ export default function NearMyRouteApp() {
     }
   }
 
+  function canOpenSmsHandoff() {
+    return typeof navigator !== "undefined" && canAttemptSms(navigator.userAgent);
+  }
+
   async function startTextFlow(facilityId: string) {
     const facility = facilities.find((item) => item.id === facilityId);
     if (!facility) return;
 
     setSelectedFacilityId(facilityId);
-    const contacts = textContacts(facility);
-    if (contacts.length === 0) {
-      setPendingTextContactByFacilityId((current) => {
-        const next = { ...current };
-        delete next[facilityId];
-        return next;
-      });
-      await copySafeMessage(facilityId, "no_phone");
-      openFacilityReview(facilityId, true, activeTab);
-      return;
-    }
+    await applyOutreachMessageHandoff(
+      facilityId,
+      planOutreachMessageHandoff(facility, { canAttemptSms: canOpenSmsHandoff() }),
+    );
+  }
 
-    const readyContacts = textReadyContacts(facility);
-    const recommendedReadyContacts = readyContacts.filter((contact) => contact.primary);
-    const directContact = recommendedReadyContacts.length === 1 ? recommendedReadyContacts[0] : readyContacts.length === 1 ? readyContacts[0] : undefined;
+  async function openMessagesForContact(facilityId: string, contactId: string) {
+    const facility = facilities.find((item) => item.id === facilityId);
+    if (!facility) return;
 
-    if (directContact) {
-      await openMessagesForContact(facilityId, directContact.id);
-      return;
-    }
+    await applyOutreachMessageHandoff(
+      facilityId,
+      planOutreachMessageHandoffForContact(facility, contactId, { canAttemptSms: canOpenSmsHandoff() }),
+    );
+  }
 
-    if (readyContacts.length > 1) {
+  async function applyOutreachMessageHandoff(facilityId: string, result: OutreachMessageHandoffResult) {
+    setTextPickerFacilityId(undefined);
+
+    if (result.kind === "choose_contact") {
       setShowMessage(false);
       setTextPickerFacilityId(facilityId);
       return;
     }
 
-    await openMessagesForContact(facilityId, contacts[0].id);
-  }
-
-  async function openMessagesForContact(facilityId: string, contactId: string) {
-    const facility = facilities.find((item) => item.id === facilityId);
-    const contact = facility?.contacts.find((item) => item.id === contactId);
-    if (!facility || !contact?.phone) return;
-
-    setTextPickerFacilityId(undefined);
-    if (isPlaceholderPhoneNumber(contact.phone)) {
-      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
-      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "placeholder_phone" }));
-      openFacilityReview(facilityId, true, activeTab);
-      return;
-    }
-    if (!isDialablePhoneNumber(contact.phone)) {
-      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
-      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "invalid_phone" }));
+    if (result.kind === "no_phone") {
+      setPendingTextContactByFacilityId((current) => {
+        const next = { ...current };
+        delete next[facilityId];
+        return next;
+      });
+      await copySafeMessage(facilityId, result.feedback);
       openFacilityReview(facilityId, true, activeTab);
       return;
     }
 
-    const canOpenSms = typeof navigator !== "undefined" && canAttemptSms(navigator.userAgent);
-    if (!canOpenSms) {
-      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
-      await copySafeMessage(facilityId, "fallback_copied");
+    if (result.kind === "blocked_contact") {
+      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: result.contactId }));
+      setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: result.feedback }));
       openFacilityReview(facilityId, true, activeTab);
       return;
     }
 
-    const smsPhone = contact.phone;
-    setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: contact.id }));
-    await copySafeMessage(facilityId, "opened");
+    if (result.kind === "copy_for_manual_sms") {
+      setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: result.contactId }));
+      await copySafeMessage(facilityId, result.feedback);
+      openFacilityReview(facilityId, true, activeTab);
+      return;
+    }
+
+    setPendingTextContactByFacilityId((current) => ({ ...current, [facilityId]: result.contactId }));
+    await copySafeMessage(facilityId, result.feedback);
     openFacilityReview(facilityId, true, activeTab);
     window.setTimeout(() => {
-      window.location.href = buildSmsUrl(smsPhone, safeMessage());
+      window.location.href = result.smsUrl;
     }, 0);
   }
 
@@ -3148,16 +3148,16 @@ export default function NearMyRouteApp() {
     const facility = facilities.find((item) => item.id === facilityId);
     if (!facility) return;
     const pendingContactId = pendingTextContactByFacilityId[facilityId];
-    const contact = facility.contacts.find((item) => item.id === pendingContactId) ?? primaryContact(facility);
-    if (!contact?.phone || isPlaceholderPhoneNumber(contact.phone) || !isDialablePhoneNumber(contact.phone)) {
+    const eligibility = markTextedEligibility(facility, pendingContactId);
+    if (!eligibility.ok) {
       setCopyFeedbackByFacilityId((current) => ({
         ...current,
-        [facilityId]: !contact?.phone ? "no_phone" : isPlaceholderPhoneNumber(contact.phone) ? "placeholder_phone" : "invalid_phone",
+        [facilityId]: eligibility.feedback,
       }));
       setShowMessage(true);
       return;
     }
-    logOutreach(facilityId, "texted", "text", "Manually marked texted after Messages fallback.", contact?.name);
+    logOutreach(facilityId, "texted", "text", "Manually marked texted after Messages fallback.", eligibility.contactName);
     setShowMessage(false);
     setCopyFeedbackByFacilityId((current) => ({ ...current, [facilityId]: "copied" }));
     setPendingTextContactByFacilityId((current) => {
