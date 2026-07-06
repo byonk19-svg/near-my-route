@@ -82,6 +82,12 @@ import {
 } from "@/lib/outreachMessageHandoff";
 import { dogfoodNotePhiWarning } from "@/lib/privacy";
 import { hasConfirmedLocation, isFallbackLocation, locationConfirmationIssue, unconfirmedRouteFacilities } from "@/lib/locationTrust";
+import {
+  addRouteAddOn,
+  removeRouteAddOn,
+  routeAddOnStopForFacility,
+  type RouteAddOnSnapshot,
+} from "@/lib/routeAddOnLifecycle";
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -165,15 +171,7 @@ type RouteView =
       canRemove: boolean;
     };
 
-type OpportunitySnapshot = {
-  facilityId: string;
-  addedDriveMinutes: number;
-  bestInsertionLabel: string;
-  bestInsertionAfterStopId?: string;
-  nearestStopName?: string;
-  nearestStopDistanceMiles: number;
-  reasonBadges: string[];
-};
+type OpportunitySnapshot = RouteAddOnSnapshot;
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -3215,81 +3213,58 @@ export default function NearMyRouteApp() {
   }
 
   function addTentatively(facilityId: string) {
-    const existingStop = routeStops.find((stop) => stop.facilityId === facilityId);
     const snapshot = snapshotOpportunity(facilityId);
-    if (existingStop) {
+    const facility = facilities.find((item) => item.id === facilityId);
+    const result = addRouteAddOn({
+      routeStops,
+      outreachLogs,
+      facilityId,
+      routeStopId: nextId("stop"),
+      outreachLogId: nextId("log"),
+      createdAt: new Date().toISOString(),
+      contactName: facility ? primaryContact(facility)?.name : undefined,
+      snapshot,
+    });
+
+    if (result.kind === "already_on_route") {
       setSelectedFacilityId(facilityId);
-      if (existingStop.status !== "tentative") {
-        setRouteView({ kind: "home" });
-        return;
-      }
+      setRouteView({ kind: "home" });
+      return;
+    }
+
+    if (result.kind === "existing_tentative_add_on") {
+      setSelectedFacilityId(facilityId);
       setRouteView({
         kind: "confirmation",
         facilityId,
-        routeStopId: existingStop.id,
+        routeStopId: result.routeStop.id,
         snapshot,
         contactedToday: Boolean(latestTodayLog(facilityId, outreachLogs)),
         canRemove: true,
       });
       return;
     }
-    const afterStopId = snapshot.bestInsertionAfterStopId;
-    const afterStop = routeStops.find((stop) => stop.id === afterStopId);
-    const order = afterStop ? afterStop.order + 0.5 : routeStops.length + 1;
-    const routeStopId = nextId("stop");
-    const addedLogId = logOutreach(facilityId, "added_to_route", "other", "Added tentatively to tomorrow's route.");
-    const nextStops = [
-      ...routeStops,
-      {
-        id: routeStopId,
-        facilityId,
-        order,
-        status: "tentative" as const,
-        source: "today_add_on" as const,
-        addedFromLogId: addedLogId,
-        routeImpact: {
-          addedDriveMinutes: snapshot.addedDriveMinutes,
-          bestInsertionLabel: snapshot.bestInsertionLabel,
-          bestInsertionAfterStopId: snapshot.bestInsertionAfterStopId,
-          nearestStopName: snapshot.nearestStopName,
-          nearestStopDistanceMiles: snapshot.nearestStopDistanceMiles,
-        },
-        notes: "Tentative add-on. Confirm study time separately from added drive time.",
-      },
-    ]
-      .sort((a, b) => a.order - b.order)
-      .map((stop, index) => ({ ...stop, order: index + 1 }));
-    setRouteStops(nextStops);
+
+    setRouteStops(result.routeStops);
+    setOutreachLogs(result.outreachLogs);
     setActiveTab("Near My Route");
     setSelectedFacilityId(facilityId);
     setShowMessage(false);
-    setRouteView({ kind: "confirmation", facilityId, routeStopId, snapshot, contactedToday: false, canRemove: true });
+    setRouteView({ kind: "confirmation", facilityId, routeStopId: result.routeStop.id, snapshot, contactedToday: false, canRemove: true });
   }
 
   function removeTentativeStop(routeStopId: string) {
-    const removedStop = routeStops.find(
-      (stop) => stop.id === routeStopId && stop.status === "tentative" && stop.source === "today_add_on",
-    );
-
-    setRouteStops((current) =>
-      current
-        .filter((stop) => stop.id !== routeStopId || stop.status !== "tentative")
-        .sort((a, b) => a.order - b.order)
-        .map((stop, index) => ({ ...stop, order: index + 1 })),
-    );
-    if (removedStop) {
-      if (removedStop.addedFromLogId) {
-        setOutreachLogs((current) => current.filter((log) => log.id !== removedStop.addedFromLogId));
-      }
-      setSelectedFacilityId(removedStop.facilityId);
+    const result = removeRouteAddOn({ routeStops, outreachLogs, routeStopId });
+    if (result.kind === "removed") {
+      setRouteStops(result.routeStops);
+      setOutreachLogs(result.outreachLogs);
+      setSelectedFacilityId(result.removedStop.facilityId);
     }
     setRouteView({ kind: "home" });
   }
 
   function removeTodayAddOn(facilityId: string) {
-    const addOnStop = routeStops.find(
-      (stop) => stop.facilityId === facilityId && stop.source === "today_add_on" && stop.status === "tentative",
-    );
+    const addOnStop = routeAddOnStopForFacility(routeStops, facilityId);
     if (!addOnStop) return;
     removeTentativeStop(addOnStop.id);
     setSelectedFacilityId(facilityId);
