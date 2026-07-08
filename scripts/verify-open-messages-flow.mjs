@@ -76,6 +76,20 @@ try {
     "placeholder contacts must not log Texted today",
   );
 
+  await clickVisibleButton(page, "Near My Route");
+  await clickVisibleButton(page, "Review add-on");
+  const blockedWaiting = page.getByRole("button", { name: "Contact before waiting" });
+  await blockedWaiting.waitFor();
+  assert.equal(await blockedWaiting.isDisabled(), true);
+  const routeDetailState = await storedState(page);
+  assert.equal(
+    routeDetailState.outreachLogs.filter((log) => log.facilityId === "encompass-westchase" && log.status === "no_answer").length,
+    0,
+    "placeholder contacts must not move to Waiting before a real outreach handoff",
+  );
+
+  await clickVisibleButton(page, "Outreach");
+
   await page.getByLabel("Phone for Lisa").first().fill("abc");
   await waitForStoredState(
     page,

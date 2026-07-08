@@ -315,6 +315,10 @@ function blockedTextActionLabel(readiness: ReturnType<typeof textReadiness>) {
   return "Text";
 }
 
+function canLogFacilityResponse(todayStatus: TodayStatus | undefined, readiness: ReturnType<typeof textReadiness>) {
+  return readiness === "ready" || (todayStatus !== undefined && todayStatus !== "not_contacted");
+}
+
 function importReviewStatusLabel(row: ImportReviewRow, issue?: string) {
   if (row.action === "skip") return "Skipped";
   if (issue) return "Needs review";
@@ -432,7 +436,7 @@ function OpportunityCard({
           <Plus size={15} /> Add Tentatively
         </Button>
         <Button onClick={onPreviewRoute}>
-          <ExternalLink size={15} /> Preview route
+          <ExternalLink size={15} /> Open Maps preview
         </Button>
       </div>
     </article>
@@ -494,7 +498,7 @@ function BestAddOnCard({
           <MessageSquareText size={15} /> Review fit
         </Button>
         <Button onClick={onPreview}>
-          <ExternalLink size={15} /> Preview route
+          <ExternalLink size={15} /> Open Maps preview
         </Button>
       </div>
       </div>
@@ -910,6 +914,7 @@ function DesktopCandidatePanel({
   const contact = primaryContact(facility);
   const readiness = textReadiness(facility);
   const canText = readiness === "ready";
+  const canLogResponse = canLogFacilityResponse(todayStatus, readiness);
   const lastLog = outreachLogs[0];
   const conversion = opportunity ? `${Math.min(100, Math.max(0, Math.round(opportunity.score)))}%` : isOnRoute ? "On route" : "--";
   const routeImpactLabel = opportunity
@@ -989,7 +994,7 @@ function DesktopCandidatePanel({
             <p className="mt-5 text-sm leading-6 text-slate-800">{routeImpactLabel}</p>
             {opportunity ? (
               <button type="button" onClick={onPreviewRoute} className="mt-3 text-sm font-bold text-blue-700">
-                Preview route handoff
+                Open preview in Google Maps
               </button>
             ) : null}
             </div>
@@ -1011,13 +1016,20 @@ function DesktopCandidatePanel({
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Button onClick={() => onLogStatus("no_answer", "Waiting for facility response.")}>Mark Waiting</Button>
-          <Button onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
+          <Button disabled={!canLogResponse} onClick={() => onLogStatus("no_answer", "Waiting for facility response.")}>
+            {canLogResponse ? "Mark Waiting" : "Contact before waiting"}
+          </Button>
+          <Button disabled={!canLogResponse} onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
             Negative Log
           </Button>
           {opportunity && todayStatus !== "added" && todayStatus !== "no_patients_today" && todayStatus !== "do_not_contact" ? (
-            <Button tone="primary" ariaLabel="Possible add-on" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
-              Mark possible add-on
+            <Button
+              tone="primary"
+              ariaLabel={canLogResponse ? "Possible add-on" : "Contact before possible add-on"}
+              disabled={!canLogResponse}
+              onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}
+            >
+              {canLogResponse ? "Mark possible add-on" : "Contact before add-on"}
             </Button>
           ) : null}
         </div>
@@ -1520,20 +1532,27 @@ function DetailDrawer({
   const canContact = todayStatus !== "do_not_contact";
   const readiness = textReadiness(facility);
   const canStartText = readiness === "ready";
+  const canLogResponse = canLogFacilityResponse(todayStatus, readiness);
   const textIsBlockedByPhone = copyFeedback === "placeholder_phone" || copyFeedback === "invalid_phone";
   const responseActions =
     todayStatus === "added" || todayStatus === "no_patients_today" || todayStatus === "do_not_contact"
       ? []
       : [
-          <Button key="waiting" onClick={() => onLogStatus("no_answer", "Waiting for facility response.")}>
-            <Timer size={15} /> Waiting
+          <Button key="waiting" disabled={!canLogResponse} onClick={() => onLogStatus("no_answer", "Waiting for facility response.")}>
+            <Timer size={15} /> {canLogResponse ? "Waiting" : "Contact before waiting"}
           </Button>,
-          <Button key="no-patients" onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
-            No patients today
+          <Button key="no-patients" disabled={!canLogResponse} onClick={() => onLogStatus("no_patients_today", "Facility replied no appropriate add-ons today.")}>
+            {canLogResponse ? "No patients today" : "Contact before reply"}
           </Button>,
           canAddRoute ? (
-            <Button key="possible" tone="primary" ariaLabel="Possible add-on" onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}>
-              Mark possible add-on
+            <Button
+              key="possible"
+              tone="primary"
+              ariaLabel={canLogResponse ? "Possible add-on" : "Contact before possible add-on"}
+              disabled={!canLogResponse}
+              onClick={() => onLogStatus("possible_add_on", "Facility may have a same-day add-on.")}
+            >
+              {canLogResponse ? "Mark possible add-on" : "Contact before add-on"}
             </Button>
           ) : null,
         ];
@@ -1600,7 +1619,7 @@ function DetailDrawer({
           </Button>
         ) : opportunity ? (
           <Button onClick={onPreviewRoute}>
-            <ExternalLink size={15} /> Preview route
+            <ExternalLink size={15} /> Open Maps preview
           </Button>
         ) : (
           <Button disabled>Route fit unavailable</Button>
@@ -1709,7 +1728,7 @@ function DetailDrawer({
             ) : null}
             {opportunity ? (
               <Button onClick={onPreviewRoute}>
-                <ExternalLink size={15} /> Preview route
+                <ExternalLink size={15} /> Open Maps preview
               </Button>
             ) : null}
           </div>
@@ -3007,11 +3026,20 @@ export default function NearMyRouteApp() {
     if (!importReviewDraft || !canConfirmImport) return;
     const result = confirmImportReview(importReviewDraft, facilities, { nextId: nextImportReviewId });
     if (!result.ok) return;
+    const bestAddOn = calculateRouteOpportunities(result.routeStops, result.facilities, {
+      maxDetourMinutes,
+      averageSpeedMph: 28,
+      excludeRecentlyContactedDays: notContactedRecentlyOnly ? followUpThresholdDays : undefined,
+      knownContactsOnly,
+      sameDayFriendlyOnly,
+    })
+      .filter((opportunity) => opportunity.group !== "Not Worth It Today")
+      .sort((a, b) => a.addedDriveMinutes - b.addedDriveMinutes || b.score - a.score)[0];
     setFacilities(result.facilities);
     setRouteStops(result.routeStops);
     setImportReviewDraft(undefined);
     setExpandedImportRowIds({});
-    openRouteHome(result.initialFacilityId ?? selectedFacilityId);
+    openRouteHome(bestAddOn?.facility.id ?? result.initialFacilityId ?? selectedFacilityId);
   }
 
   async function copySafeMessage(facilityId: string, feedback: TextFeedback = "copied") {
@@ -3282,7 +3310,7 @@ export default function NearMyRouteApp() {
               <h1 className="text-xl font-black uppercase leading-tight text-slate-950 xl:text-lg">Near My Route</h1>
               <p className="text-xs font-medium text-slate-600 xl:hidden">Route-aware MBSS facility opportunities</p>
               <p className="hidden text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 xl:block">
-                Administrative logistics portal
+                Route-aware MBSS facility opportunities
               </p>
             </div>
           </div>
